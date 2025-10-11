@@ -1,0 +1,52 @@
+{
+  "questions": [
+    {
+      "question_id": 1,
+      "question": "What is the correct file extension for Python files?",
+      "options": [
+        {
+          "id": "A",
+          "text": ".pt"
+        },
+        {
+          "id": "B",
+          "text": ".py"
+        },
+        {
+          "id": "C",
+          "text": ".python"
+        },
+        {
+          "id": "D",
+          "text": ".p"
+        }
+      ],
+      "answer": "B",
+      "explanation": "The correct file extension for Python files is .py."
+    },
+    {
+      "question_id": 2,
+      "question": "Which of the following is used to create a list in Python?",
+      "options": [
+        {
+          "id": "A",
+          "text": "{}"
+        },
+        {
+          "id": "B",
+          "text": "[]"
+        },
+        {
+          "id": "C",
+          "text": "()"
+        },
+        {
+          "id": "D",
+          "text": "/ /"
+        }
+      ],
+      "answer": "B",
+      "explanation": "In Python, lists are created using square brackets [] to enclose the elements."
+    }
+  ]
+}
