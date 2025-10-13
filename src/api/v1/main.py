@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.api.routers import mcqs
+from src.api.routers import mcqs, docs
 
 app = FastAPI(title="Otis")
 
@@ -13,8 +13,4 @@ app.add_middleware(
 )
 
 app.include_router(mcqs.router)
-
-@app.get("/")
-
-async def root():
-    return {"hello":"world"}
+app.include_router(docs.router)
