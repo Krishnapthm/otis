@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Literal, TypedDict, List
 import json
+import requests
 
 load_dotenv()
 
@@ -26,11 +27,15 @@ llm = AzureChatOpenAI(
     azure_deployment="gpt-4o-mini",
     api_version="2024-12-01-preview"
 )
+url = "http://localhost:8000/mcq/create"
 
 def store_mcq(quiz: MCQ):
-    with open('quiz.json', 'w') as file:
-        file.write(quiz.model_dump_json(indent=2))
-    print("saved in quiz.json")
+    payload = {
+        "mcq": quiz.model_dump(),
+        
+    }
+    response = requests.post(url, json=payload)
+    print(response.json())
 
 
 llm_with_format = llm.with_structured_output(MCQ)
