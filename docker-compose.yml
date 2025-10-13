@@ -29,6 +29,7 @@ services:
       - "8000:8000"
     volumes:
       - ./src:/app/src
+      - ./uploads:/app/uploads
     env_file:
       - .env
       - .env.fastapi

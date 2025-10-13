@@ -10,6 +10,8 @@ RUN uv sync --frozen --no-cache
 
 COPY ./src /app/src
 
+COPY ./uploads /app/uploads
+
 EXPOSE 8000
 
 CMD [ "uv", "uvicorn", "src.api.v1.main:app", "--host", "0.0.0.0", "--port", "8000" ]
