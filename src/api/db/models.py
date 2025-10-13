@@ -10,15 +10,29 @@ class Base(DeclarativeBase):
     pass
 
 
+class Documents(Base):
+    __tablename__ = 'documents'
+    __table_args__ = (
+        PrimaryKeyConstraint('doc_id', name='documents_pkey'),
+    )
+
+    doc_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
+    filename: Mapped[str] = mapped_column(String)
+    file_type: Mapped[str] = mapped_column(String)
+    file_size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
+    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
+
+
 class Mcqs(Base):
     __tablename__ = 'mcqs'
     __table_args__ = (
         PrimaryKeyConstraint('id', name='mcqs_pkey'),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text("generate_random_uuid()"))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
     generated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, server_default=text('CURRENT_TIMESTAMP'))
-    project: Mapped[Optional[str]] = mapped_column(String)
+    project: Mapped[Optional[str]] = mapped_column(String, server_default=text("'test'::character varying"))
     mcq: Mapped[Optional[dict]] = mapped_column(JSONB)
 
 
