@@ -21,16 +21,26 @@ class CreateMCQ(BaseModel):
     mcq: MCQ
     
 class ReadMCQ(CreateMCQ):
-    id: UUID4
-    project: Optional[str]
+    mcq_id: UUID4
     generated_at: datetime.datetime
 
 class DocBase(BaseModel):
     filename: str
     file_type: str
     file_size: int
+    file_path: str
+    # project_id: UUID4
 
 class DocResponse(DocBase):
     doc_id: UUID4
     created_at: datetime.datetime
     updated_at: datetime.datetime | None = None
+
+class ProjectBase(BaseModel):
+    project_name: str
+    project_desc: Optional[str]
+
+class ProjectResponse(ProjectBase):
+    project_id: UUID4
+    created_at: datetime.datetime
+    
