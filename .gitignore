@@ -3,3 +3,4 @@
 .env.fastapi
 __pycache__
 postgres_data
+experiments
