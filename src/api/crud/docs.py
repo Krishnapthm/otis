@@ -7,7 +7,7 @@ from src.api.db.schema import  DocBase, DocResponse
 import uuid
 from datetime import timezone, timedelta
 from fastapi import HTTPException
-from src.file_handling import delete_file, download_file, zip_files
+from src.services.file_handling import delete_file, download_file, zip_files
 from sqlalchemy.orm import selectinload
 from sqlalchemy import insert
 
@@ -51,30 +51,37 @@ async def upload_new_doc(project_id: uuid.UUID, db: AsyncSession, docs: List[Doc
             file_size=db_doc.file_size,
             created_at=db_doc.created_at,
             updated_at=db_doc.updated_at,
-            file_path=db_doc.file_path
+            file_path=db_doc.file_path,
+            project_id=project_id
+
         ).model_dump()
         for db_doc in db_docs
     ]
 
-async def get_doc(db: AsyncSession, did: uuid)-> DocResponse:
+async def get_doc(db: AsyncSession, did: uuid, project_id)-> List[DocResponse]:
 
-    result = await db.execute(select(Documents).where(Documents.doc_id==did))
-    document = result.scalar_one_or_none()
+    result = await db.execute(select(Documents).join(t_project_docs, Documents.doc_id == t_project_docs.c.doc_id).where(t_project_docs.c.project_id == project_id))
+
+    document = result.scalars().all()
 
     if not document:
         raise HTTPException(status_code=404)
     
-    return DocResponse(
-        file_size=document.file_size,
-        file_type=document.file_type,
-        filename=document.filename,
-        doc_id=document.doc_id,
-        created_at=document.created_at,
-        updated_at=document.updated_at
+    return [
+        DocResponse(
+            file_size=doc.file_size,
+            file_type=doc.file_type,
+            filename=doc.filename,
+            doc_id=doc.doc_id,
+            created_at=doc.created_at,
+            updated_at=doc.updated_at,
+            file_path=doc.file_path,
+            project_id=project_id
+        )
+        for doc in document
+    ] 
 
-    )
-
-async def get_all_docs(db: AsyncSession, limit: int=50, skip: int=0) -> List[DocResponse]:
+async def get_all_docs(project_id: uuid.UUID, db: AsyncSession, limit: int=50, skip: int=0) -> List[DocResponse]:
 
     result = await db.execute(select(Documents).offset(skip).limit(limit))
     docs = result.scalars().all()
@@ -87,29 +94,39 @@ async def get_all_docs(db: AsyncSession, limit: int=50, skip: int=0) -> List[Doc
             file_size = doc.file_size,
             created_at=doc.created_at,
             updated_at=doc.updated_at,
-            file_path=doc.file_path
+            file_path=doc.file_path,
+            project_id=project_id
         )
         for doc in docs
     ]
 
-async def delete_doc(db: AsyncSession, did: uuid)-> dict:
+async def delete_doc(db: AsyncSession, did: List[uuid.UUID])-> dict:
 
-    result = await db.execute(select(Documents). where(Documents.doc_id==did))
-    del_doc = result.scalar_one_or_none()
+    del_docs: List[Documents]=[]
+    for di in did:
+        result = await db.execute(select(Documents). where(Documents.doc_id==di))
+        del_docs.append(result.scalar_one_or_none())
 
-    if not del_doc:
-        raise HTTPException(status_code=404, detail="Document does not exist")
+    # for del_doc in del_docs:
+    #     if not del_doc:
+    #         raise HTTPException(status_code=404, detail=f"Document does not exist")
+        
 
-    del_doc_name = del_doc.filename
+    # del_doc_name = del_doc.filename
 
-    if await delete_file(del_doc_name):
-        await db.delete(del_doc)
+    for del_doc in del_docs:
+
+        del_doc_name = del_doc.filename
+
+        if await delete_file(del_doc_name):
+            await db.delete(del_doc)
+
         await db.commit()
 
         return {
             "message": f"{del_doc_name} deleted successfully"
         }
-
+    
 async def download_doc(db: AsyncSession, project_id)-> List[FileResponse]:
     result = await db.execute(
         select(Documents.filename)
@@ -125,4 +142,7 @@ async def download_doc(db: AsyncSession, project_id)-> List[FileResponse]:
         return download_file(down_docs[0])
     
     return await zip_files(down_docs)
+
+# async def delete_docs(db: AsyncSession, project_id):
+
 
