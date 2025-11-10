@@ -1,6 +1,11 @@
+import collections
+from math import e
+import uuid
 from pydantic import BaseModel, UUID4, Field
 from typing import List, Literal, Optional, Dict, Any
 import datetime
+
+from sqlalchemy import Boolean
 
 
 class Options(BaseModel):
@@ -29,12 +34,41 @@ class DocBase(BaseModel):
     file_type: str
     file_size: int
     file_path: str
-    # project_id: UUID4
 
 class DocResponse(DocBase):
+    project_id: Optional[UUID4]
     doc_id: UUID4
     created_at: datetime.datetime
     updated_at: datetime.datetime | None = None
+
+class DocDelete(BaseModel):
+    doc_id: List[uuid.UUID]
+
+class EmbeddingBase(BaseModel):
+    ev_id: UUID4
+    collection_id: UUID4
+    project_id: UUID4
+
+class Metadata(BaseModel):
+    source: str
+    file_name: str
+
+class EmbeddingVersionDelete(BaseModel):
+    version_ids: List[uuid.UUID]
+class EmbeddingVersionBase(BaseModel):
+    project_id: UUID4
+    desc: Optional[str] = Field(None, max_length=100)
+    collection_id: UUID4
+    version_number: int
+    is_active: bool = False
+    doc_count: int
+
+class EmbeddingVersionResponse(EmbeddingVersionBase):
+    version_id: UUID4
+    created_at: datetime.datetime
+    
+class EmbeddingResponse(Metadata):
+    page_content:str
 
 class ProjectBase(BaseModel):
     project_name: str
