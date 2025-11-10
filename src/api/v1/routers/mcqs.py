@@ -7,7 +7,7 @@ from src.api.db.schema import CreateMCQ, ReadMCQ
 from typing import List
 import uuid
 
-router = APIRouter()
+router = APIRouter(prefix="/mcqs")
 
 @router.post("/", name='create MCQ', response_model = ReadMCQ, status_code = status.HTTP_201_CREATED)
 async def create_mcq_endpoint(mcqs: CreateMCQ, db: AsyncSession = Depends(get_db)):

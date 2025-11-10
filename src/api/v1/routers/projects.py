@@ -7,7 +7,7 @@ from typing import List
 import json
 import uuid
 
-router = APIRouter()
+router = APIRouter(prefix="/projects")
 
 @router.post("/", name='create project', response_model = ProjectResponse, status_code = status.HTTP_201_CREATED)
 async def create_project(project: ProjectBase, db: AsyncSession = Depends(get_db)):

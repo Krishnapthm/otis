@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime
 from src.api.crud import delete_doc, download_doc, get_doc, upload_new_doc, get_all_docs
 from src.api.db.models import Documents
-from src.api.db.schema import DocResponse, DocBase
+from src.api.db.schema import DocDelete, DocResponse, DocBase
 from src.api.db.models.session import get_db
 import os
 
-from src.file_handling import store_file
+from src.services.file_handling import store_file
 
 ALLOWED_EXTENSIONS = {
     "pdf":"application/pdf",
@@ -25,9 +25,9 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 
 
-router = APIRouter()
+router = APIRouter(prefix="/project/{project_id}/documents")
 
-@router.post("/{project_id}/", name='upload documents', response_model=List[DocResponse], status_code = status.HTTP_201_CREATED)
+@router.post("/", name='upload documents', response_model=List[DocResponse], status_code = status.HTTP_201_CREATED)
 async def upload_document_endpoint(project_id: uuid.UUID, files: List[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
     """Upload and Store documents in the database"""
 
@@ -35,26 +35,27 @@ async def upload_document_endpoint(project_id: uuid.UUID, files: List[UploadFile
 
 
 @router.get("/", name='list all documents', status_code = status.HTTP_200_OK, response_model=List[DocResponse])
-async def get_documents_endpoint(db: AsyncSession = Depends(get_db)):
+async def get_documents_endpoint(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     
-    return await get_all_docs(db)
+    return await get_all_docs(project_id, db)  
 
 
 @router.get("/{doc_id}", name='list document with id', status_code = status.HTTP_201_CREATED)
-async def get_document_endpoint( doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_document_endpoint( doc_id: uuid.UUID, project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     
-    return await get_doc(db, doc_id)
+    return await get_doc(db, doc_id, project_id)
 
 
-@router.delete("/{doc_id}", name='delete document with id', status_code = status.HTTP_200_OK)
-async def delete_document_endpoint( doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    
-    return await delete_doc(db, doc_id)
+@router.delete("/", name='delete document with id', status_code = status.HTTP_200_OK)
+async def delete_document_endpoint( request: DocDelete, db: AsyncSession = Depends(get_db)):
+    return await delete_doc(db, request.doc_id)
 
-
-@router.get("/{project_id}/download", name='download documents with id', status_code = status.HTTP_200_OK)
+@router.get("/download", name='download documents with id', status_code = status.HTTP_200_OK)
 async def download_doc_endpoint(project_id:uuid.UUID, db: AsyncSession = Depends(get_db)):
     return await download_doc(db, project_id)
 
-# @router.post("/{project_id}", name="upload project documents", response_model = DocResponse, status_code=status.HTTP_201_CREATED)
-# async def upload_project_document_endpoint(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+
+
+# @router.delete("/{project_id}/delete", name='delete all documents in a project', status_code = status.HTTP_200_OK)
+# async def download_doc_endpoint(project_id:uuid.UUID, db: AsyncSession = Depends(get_db)):
+#     return await download_doc(db, project_id)
