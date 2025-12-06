@@ -1,0 +1,104 @@
+[
+  {
+    "project_id": "8f6b1e78-3c76-4d69-9b5b-2a535bcb4f0e",
+    "project_name": "Customer Support Knowledge Base",
+    "created_by": "2a9e3b6f-8d92-4c55-9f32-5ccaf6d47a12",
+    "project_desc": "Centralized repository for support documentation and training materials.",
+    "created_at": "2025-01-12T10:23:45Z",
+    "doc": [
+      { "document_id": "bf0dcd8e-df17-4d86-9fb6-6b92b0e2f412" },
+      { "document_id": "6e50ac3a-3f6a-46fa-9e52-33c37da1e4f8" }
+    ],
+    "mcq": [{ "mcq_id": "0f44e8f9-1650-4e51-87e7-89e18c8d2a9a" }],
+    "embedding_versions": [
+      {
+        "embedding_version_id": "d8b42d90-8b30-4a37-8b5b-1a74f685f453",
+        "version": 1
+      }
+    ]
+  },
+  {
+    "project_id": "2c978233-0f3e-4f1a-a92b-345d7a911c58",
+    "project_name": "Internal Policy Automation",
+    "created_by": "54a7c928-bb71-41d7-b8a7-6de21b4926d5",
+    "project_desc": "Automates extraction of policy rules from legal documents.",
+    "created_at": "2025-02-01T14:12:09Z",
+    "doc": [],
+    "mcq": [],
+    "embedding_versions": [
+      {
+        "embedding_version_id": "4bd65510-703b-4ace-bc70-3a788db09153",
+        "version": 1
+      },
+      {
+        "embedding_version_id": "1132dc58-06c5-44c6-9340-92b82eac23f1",
+        "version": 2
+      }
+    ]
+  },
+  {
+    "project_id": "0e9d7326-6631-4c3f-a3cc-a21a7b1a3c0f",
+    "project_name": "Product FAQ Enhancement",
+    "created_by": "cd458808-11f1-4f34-9dc1-3a93b18e3f54",
+    "project_desc": null,
+    "created_at": "2025-03-18T09:01:27Z",
+    "doc": [{ "document_id": "94615dca-c109-4b7b-ad94-50fc57c2c0d1" }],
+    "mcq": [
+      { "mcq_id": "3ad4cb83-36e9-4ba8-85f0-b8eadbe1c8ac" },
+      { "mcq_id": "72bc0f94-f037-46df-b852-ab63a6f00b05" }
+    ],
+    "embedding_versions": []
+  },
+  {
+    "project_id": "bbacf0cd-82b8-4f80-9e3a-df8c607a0e1a",
+    "project_name": "Training Module Generator",
+    "created_by": "1a50f35b-bd46-4e7e-bda7-43b0c8e71ee9",
+    "project_desc": "Creates structured training modules for onboarding employees.",
+    "created_at": "2025-04-02T16:40:18Z",
+    "doc": [],
+    "mcq": [{ "mcq_id": "bc78f22d-745f-4bf3-8ca9-7de784d6f902" }],
+    "embedding_versions": [
+      {
+        "embedding_version_id": "f9a2fb08-f474-40ee-bcfc-32f91552b930",
+        "version": 1
+      }
+    ]
+  },
+  {
+    "project_id": "5f47724b-aa41-4bcb-9ec7-52cbffaa7129",
+    "project_name": "Security Compliance Summaries",
+    "created_by": "98e94ced-d7ae-4a7b-a55f-0dd37bdebb7f",
+    "project_desc": "Summarizes compliance frameworks such as ISO 27001 and SOC 2.",
+    "created_at": "2025-05-10T08:55:03Z",
+    "doc": [
+      { "document_id": "6c141443-1e01-4a2e-8e35-74fdc7306a6b" },
+      { "document_id": "1ac253e7-70e0-40fb-8ac2-ffc85357807a" }
+    ],
+    "mcq": [],
+    "embedding_versions": [
+      {
+        "embedding_version_id": "7d5fa489-df18-41b8-983c-ece80f3977e1",
+        "version": 1
+      }
+    ]
+  },
+  {
+    "project_id": "b36debdc-60f1-4c71-922e-f56573670162",
+    "project_name": "AI Tutoring Assistant",
+    "created_by": "4b3cc25e-ceaa-4425-804e-9f4dc277e156",
+    "project_desc": "Interactive tutoring assistant powered by curated documents and quizzes.",
+    "created_at": "2025-06-21T13:22:58Z",
+    "doc": [],
+    "mcq": [{ "mcq_id": "16cf0f8c-7758-4538-81aa-447552fd8ee4" }],
+    "embedding_versions": [
+      {
+        "embedding_version_id": "ac05c48f-bf3a-44ea-b139-62fc7b9f7537",
+        "version": 1
+      },
+      {
+        "embedding_version_id": "8a7e2f4f-9e9d-4e3e-b730-ba2432e6af38",
+        "version": 2
+      }
+    ]
+  }
+]
