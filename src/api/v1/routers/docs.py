@@ -5,11 +5,13 @@ from typing import List
 import uuid
 from datetime import datetime
 from src.api.crud import delete_doc, download_doc, get_doc, upload_new_doc, get_all_docs
+from src.api.crud.docs import doc_thumbnail
 from src.api.db.models import Documents
-from src.api.db.schema import DocDelete, DocResponse, DocBase
+from src.api.db.schema import AuthResponse, DocDelete, DocResponse, DocBase
 from src.api.db.models.session import get_db
 import os
 
+from src.core.security import get_current_user
 from src.services.file_handling import store_file
 
 ALLOWED_EXTENSIONS = {
@@ -27,35 +29,58 @@ UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 
 router = APIRouter(prefix="/project/{project_id}/documents")
 
-@router.post("/", name='upload documents', response_model=List[DocResponse], status_code = status.HTTP_201_CREATED)
-async def upload_document_endpoint(project_id: uuid.UUID, files: List[UploadFile] = File(...), db: AsyncSession = Depends(get_db)):
-    """Upload and Store documents in the database"""
 
-    return await upload_new_doc(project_id, db, await store_file(files))
+@router.post("/", name='upload documents', response_model=List[DocResponse], status_code = status.HTTP_201_CREATED)
+async def upload_document_endpoint(
+    project_id: uuid.UUID, 
+    current_user: AuthResponse = Depends(get_current_user), 
+    files: List[UploadFile] = File(...), 
+    db: AsyncSession = Depends(get_db)
+):
+    # [Auth Change] current_user is passed. CRUD logic now uses it to filter.
+    return await upload_new_doc(project_id, db, await store_file(files), current_user)
 
 
 @router.get("/", name='list all documents', status_code = status.HTTP_200_OK, response_model=List[DocResponse])
-async def get_documents_endpoint(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    
-    return await get_all_docs(project_id, db)  
+async def get_documents_endpoint(
+    project_id: uuid.UUID, 
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user)
+):
+    # [Auth Change] Passing current_user.user_id to enforce ownership
+    return await get_all_docs(project_id, db, current_user.user_id)  
 
 
-@router.get("/{doc_id}", name='list document with id', status_code = status.HTTP_201_CREATED)
-async def get_document_endpoint( doc_id: uuid.UUID, project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    
-    return await get_doc(db, doc_id, project_id)
+@router.get("/{doc_id}", name='list document with id', status_code = status.HTTP_201_CREATED, response_model=DocResponse)
+async def get_document_endpoint( 
+    doc_id: uuid.UUID, 
+    project_id: uuid.UUID, 
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user)
+):
+    # [Auth Change] Passing current_user.user_id to enforce ownership
+    return await get_doc(db, doc_id, project_id, current_user.user_id)
 
 
 @router.delete("/", name='delete document with id', status_code = status.HTTP_200_OK)
-async def delete_document_endpoint( request: DocDelete, db: AsyncSession = Depends(get_db)):
-    return await delete_doc(db, request.doc_id)
+async def delete_document_endpoint( 
+    request: DocDelete, 
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user)
+):
+    # [Auth Change] Passing current_user.user_id to enforce ownership
+    return await delete_doc(db, request.doc_id, current_user.user_id)
 
 @router.get("/download", name='download documents with id', status_code = status.HTTP_200_OK)
-async def download_doc_endpoint(project_id:uuid.UUID, db: AsyncSession = Depends(get_db)):
-    return await download_doc(db, project_id)
+async def download_doc_endpoint(
+    project_id:uuid.UUID, 
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user)
+):
+    # [Auth Change] Passing current_user.user_id to enforce ownership
+    return await download_doc(db, project_id, current_user.user_id)
 
+@router.get("/thumbnail/{doc_id}", name = "document thumbnail", status_code = status.HTTP_200_OK)
+async def get_doc_thumbnail(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
-
-# @router.delete("/{project_id}/delete", name='delete all documents in a project', status_code = status.HTTP_200_OK)
-# async def download_doc_endpoint(project_id:uuid.UUID, db: AsyncSession = Depends(get_db)):
-#     return await download_doc(db, project_id)
+    return await doc_thumbnail(doc_id, db)
