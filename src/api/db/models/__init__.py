@@ -44,6 +44,22 @@ class LangchainPgCollection(Base):
     langchain_pg_embedding: Mapped[List['LangchainPgEmbedding']] = relationship('LangchainPgEmbedding', back_populates='collection')
 
 
+class Users(Base):
+    __tablename__ = 'users'
+    __table_args__ = (
+        PrimaryKeyConstraint('user_id', name='users_pkey'),
+        UniqueConstraint('email', name='users_email_key'),
+        UniqueConstraint('email', name='email')
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
+    email: Mapped[str] = mapped_column(Text)
+    hashed_password: Mapped[str] = mapped_column(Text)
+    user_name: Mapped[str] = mapped_column("uname", String)
+    role: Mapped[str] = mapped_column(Text, server_default=text("'user'::text"))
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, server_default=text('now()'))
+    is_active: Mapped[Optional[bool]] = mapped_column(Boolean, server_default=text('true'))
+
 class Mcqs(Base):
     __tablename__ = 'mcqs'
     __table_args__ = (
@@ -65,12 +81,14 @@ class Projects(Base):
 
     project_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
     project_name: Mapped[str] = mapped_column(String)
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid)
     project_desc: Mapped[Optional[str]] = mapped_column(String)
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, server_default=text('now()'))
 
     doc: Mapped[List['Documents']] = relationship('Documents', secondary='project_docs', back_populates='project')
     mcq: Mapped[List['Mcqs']] = relationship('Mcqs', secondary='project_mcqs', back_populates='project')
     embedding_versions: Mapped[List['EmbeddingVersions']] = relationship('EmbeddingVersions', back_populates='project')
+
 
 
 t_student = Table(
@@ -100,6 +118,7 @@ class EmbeddingVersions(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     document_count: Mapped[Optional[int]] = mapped_column(Integer)
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, server_default=text('now()'))
+    version_name: Mapped[Optional[str]] = mapped_column(Text)
 
     collection: Mapped['LangchainPgCollection'] = relationship('LangchainPgCollection', back_populates='embedding_versions')
     project: Mapped['Projects'] = relationship('Projects', back_populates='embedding_versions')
@@ -148,14 +167,11 @@ class VersionDocuments(Base):
     __table_args__ = (
         ForeignKeyConstraint(['document_id'], ['documents.doc_id'], ondelete='CASCADE', name='version_documents_document_id_fkey'),
         ForeignKeyConstraint(['version_id'], ['embedding_versions.version_id'], ondelete='CASCADE', name='version_documents_version_id_fkey'),
-        PrimaryKeyConstraint('id', name='version_documents_pkey'),
-        UniqueConstraint('version_id', 'document_id', name='unique_version_document')
+        PrimaryKeyConstraint('version_id', 'document_id', name='version_documents_pkey'),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
     version_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     document_id: Mapped[uuid.UUID] = mapped_column(Uuid)
-    chunk_count: Mapped[Optional[int]] = mapped_column(Integer)
     processed_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime, server_default=text('now()'))
 
     document: Mapped['Documents'] = relationship('Documents', back_populates='version_documents')

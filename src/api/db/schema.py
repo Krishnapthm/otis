@@ -1,5 +1,6 @@
 import collections
 from math import e
+from os import uname
 import uuid
 from pydantic import BaseModel, UUID4, Field
 from typing import List, Literal, Optional, Dict, Any
@@ -44,10 +45,6 @@ class DocResponse(DocBase):
 class DocDelete(BaseModel):
     doc_id: List[uuid.UUID]
 
-class EmbeddingBase(BaseModel):
-    ev_id: UUID4
-    collection_id: UUID4
-    project_id: UUID4
 
 class Metadata(BaseModel):
     source: str
@@ -55,6 +52,11 @@ class Metadata(BaseModel):
 
 class EmbeddingVersionDelete(BaseModel):
     version_ids: List[uuid.UUID]
+
+class EmbeddingCreateRequest(BaseModel):
+    version_name: str
+    doc_id: List[uuid.UUID]
+    
 class EmbeddingVersionBase(BaseModel):
     project_id: UUID4
     desc: Optional[str] = Field(None, max_length=100)
@@ -62,6 +64,7 @@ class EmbeddingVersionBase(BaseModel):
     version_number: int
     is_active: bool = False
     doc_count: int
+    version_name: str
 
 class EmbeddingVersionResponse(EmbeddingVersionBase):
     version_id: UUID4
@@ -77,4 +80,43 @@ class ProjectBase(BaseModel):
 class ProjectResponse(ProjectBase):
     project_id: UUID4
     created_at: datetime.datetime
+    created_by: UUID4
+
+class CreateUser(BaseModel):
+    email: str
+    uname: str
+    password: str
+
+class LoginUser(BaseModel):
+    email: str
+    password: str
+
+class AuthResponse(BaseModel):
+    user_id: UUID4
+    uname: str
+    email: str
+    role: Literal["admin", "user"]
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+class UserResponse(BaseModel):
+    id: UUID4
+    uname: str
+    email: str
+    created_at: datetime.datetime
+
+    model_config = {
+        "from_attributes": True
+    }
+
+class ChunkDocuments(BaseModel):
+    doc_name: str
+    chunk_count: int
+
+
     
