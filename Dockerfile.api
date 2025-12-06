@@ -10,7 +10,6 @@ RUN uv sync --frozen --no-cache
 
 COPY ./src /app/src
 
-COPY ./uploads /app/uploads
 
 RUN  uv pip install docling --extra-index-url https://download.pytorch.org/whl/cpu
 

@@ -30,6 +30,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./uploads:/app/uploads
+      - ./thumbnails:/app/thumbnails
     env_file:
       - .env
       - .env.fastapi
