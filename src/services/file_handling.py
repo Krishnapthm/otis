@@ -1,3 +1,4 @@
+from fileinput import filename
 from typing import List
 from fastapi import File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -5,6 +6,8 @@ from src.api.db.schema import DocResponse, DocBase
 import os
 import zipfile
 import io
+import fitz
+from PIL import Image
 
 ALLOWED_EXTENSIONS = {
     "pdf":"application/pdf",
@@ -17,6 +20,7 @@ ALLOWED_EXTENSIONS = {
 MAX_FILE_SIZE = 10 * 1024 * 1024
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
+THUMBNAIL_DIR = os.environ.get("THUMBNAIL_DIR", "/app/thumbnails")
 
 async def store_file(files: List[UploadFile] = File(...)) -> List[DocBase]:
     
@@ -97,4 +101,38 @@ async def zip_files(filenames: List[str]):
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=documents.zip"}
     )
+def pdf_thumbnail(pdf_path: str, size: int = 512) -> FileResponse:
+    """
+    Generate a perfect square thumbnail of the first page of a PDF.
+    The crop is taken from the TOP of the page to avoid stretching.
+    """
 
+    media_type = "image/png"
+    base = os.path.splitext(os.path.basename(pdf_path))[0]
+    thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{base}.png")
+
+    zoom = 2  
+    doc = fitz.open(pdf_path)
+    page = doc.load_page(0)
+    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+
+    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+    w, h = img.size
+    square_side = min(w, h) 
+    img = img.crop((0, 0, square_side, square_side))  
+
+    if size:
+        img = img.resize((size, size), Image.LANCZOS)
+
+    img.save(thumbnail_path, "PNG")
+
+    return FileResponse(
+        path=thumbnail_path,
+        media_type=media_type,
+        filename=os.path.basename(thumbnail_path),
+    )
+
+if __name__ == "__main__":
+
+    pdf_thumbnail("uploads/invoice.pdf")
