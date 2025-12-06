@@ -25,5 +25,11 @@ dependencies = [
     "dotenv>=0.9.9",
     "langchain-postgres>=0.0.16",
     "langchain-text-splitters>=1.0.0",
-    
+    "python-jose[cryptography]>=3.5.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt==3.2.2",
+    "pydantic-settings>=2.11.0",
+    "pydantic[email]>=2.12.3",
+    "tools>=1.0.15",
+    "pymupdf>=1.26.5",
 ]
