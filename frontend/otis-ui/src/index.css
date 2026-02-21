@@ -4,10 +4,10 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 0px);
+  --radius-md: calc(var(--radius) - 0px);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 0px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -40,8 +40,9 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 }
+
 :root {
-  --radius: 0.65rem;
+  --radius: 0.75em;
   --background: oklch(1 0 0);
   --foreground: oklch(0.141 0.005 285.823);
   --card: oklch(1 0 0);
@@ -113,10 +114,46 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Hide native browser scrollbars globally, only show shadcn/ui ScrollArea scrollbars */
+  * {
+    scrollbar-width: none;
+    /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+    /* Chrome, Safari, Opera */
+  }
+
+  /* Re-enable scrollbars for ScrollArea viewport (shadcn/ui component) */
+  [data-slot="scroll-area-viewport"] {
+    scrollbar-width: thin;
+    -ms-overflow-style: auto;
+  }
+
+  [data-slot="scroll-area-viewport"]::-webkit-scrollbar {
+    display: block;
+    width: 0;
+    height: 0;
+  }
+
+  /* Hide scrollbars on body and common containers */
+  html,
+  body,
+  :root,
+  #root {
+    overflow: hidden;
+    height: 100%;
+  }
 }
+
 .marquee {
   display: flex;
   width: max-content;
@@ -124,15 +161,21 @@
 }
 
 .marquee__inner {
-  padding-right: 2rem; /* gap between loops */
+  padding-right: 2rem;
+  /* gap between loops */
   white-space: nowrap;
   display: inline-block;
+}
+
+.squircle {
+  corner-shape: squircle;
 }
 
 @keyframes marquee {
   0% {
     transform: translateX(0);
   }
+
   100% {
     transform: translateX(-50%);
   }

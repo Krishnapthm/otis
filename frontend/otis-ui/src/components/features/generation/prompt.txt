@@ -1,0 +1,119 @@
+this is my embeddings tab in my vite react app.
+import type { EmbeddingVersion } from @/api/embeddingsApi";
+import { DataTable } from "@/components/shared/data-table";
+import { listEmbeddings, deleteEmbeddings } from @/api/embeddingsApi";
+import { useState, useEffect } from "react";
+interface EmbeddingsTabProps {
+  selectedDocIds: string[];
+  projectId: string;
+}
+export function EmbeddingsTab({
+  selectedDocIds = [],
+  projectId,
+}: EmbeddingsTabProps) {
+  const [embeddings, setEmbeddings] = useState<EmbeddingVersion[]>([]);
+  useEffect(() => {
+    listEmbeddings(projectId).then(setEmbeddings);
+  }, []);
+  const handleDelete = async (versionIds: string[]) => {
+    await deleteEmbeddings(projectId, versionIds);
+    // Refresh data
+    const updated = await listEmbeddings(projectId);
+    setEmbeddings(updated);
+  };
+  return <DataTable data={embeddings} onDelete={handleDelete} />;
+}
+I want you to integrate this with my backend so that when the doc_id is passed to the embeddings endpoint. the embeddings creation starts.
+embeddingsApi.ts
+import api from "./authApi";
+// Types
+export interface EmbeddingVersion {
+  version_id: string;
+  version_name: string;
+  project_id: string;
+  collection_id: string;
+  version_number: number;
+  is_active: boolean;
+  desc: string | null;
+  doc_count: number;
+  created_at: string;
+}
+export interface CreateEmbeddingRequest {
+  version_name: string;
+  project_id: string;
+  doc_id: string[];
+}
+export interface DeleteEmbeddingRequest {
+  version_ids: string[];
+}
+// Create embeddings for selected documents
+export async function createEmbedding(
+  projectId: string,
+  data: CreateEmbeddingRequest
+): Promise<EmbeddingVersion> {
+  const res = await api.post/v1/project/${projectId}/embeddings/, {
+    version_name: data.version_name,
+    doc_id: data.doc_id,
+  });
+  return res.data;
+}
+docApi.ts
+export interface Document {
+  doc_id: string;
+  filename: string;
+  file_type: string;
+  file_size: number;
+  file_path: string;
+  project_id: string;
+  created_at: string;
+  updated_at: string | null;
+}
+export async function getDocument(
+  projectId: string,
+  docId: string
+): Promise<Document> {
+  const res = await api.get/v1/project/${projectId}/documents/${docId});
+  return res.data;
+}
+
+crud.py
+
+
+# [Auth Change] Added user_id to parameters
+async def get_doc(db: AsyncSession, did: uuid.UUID, project_id: uuid.UUID, user_id: uuid.UUID)-> List[DocResponse]:
+
+    # [Auth Change] Joined with Projects to ensure the project belongs to the user
+    result = await db.execute(
+        select(Documents)
+        .join(t_project_docs, Documents.doc_id == t_project_docs.c.doc_id)
+        .join(Projects, t_project_docs.c.project_id == Projects.project_id) # Join Project
+        .where(and_(t_project_docs.c.project_id == project_id, Projects.created_by == user_id)) # Check ownership
+    )
+
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(status_code=404)
+    
+    return DocResponse(
+            file_size=document.file_size,
+            file_type=document.file_type,
+            filename=document.filename,
+            doc_id=document.doc_id,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+            file_path=document.file_path,
+            project_id=project_id
+        )
+        
+
+
+create a clean createEmbeddings form which i can reuse inside the datatable or wherever i need to.
+in the embeddings tab, i need you to create a card which can be collapsed. and inside the collapsible card, i need the form. and when the card is collapsed render a loading spinner saying creating embeddings or something like that get creative.
+inside the form, i need you to display the selected documents with a badge. inside the badge i need you to display the document name and a x for deselecting the document.
+i want you to build me a polished ui using only the latest shadcnui components 
+make it as drop-in-replaceable as possible.
+
+note: shadchui toast is replaced with sonner.
+
+feel free to ask for additional code you if you need

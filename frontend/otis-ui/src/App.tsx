@@ -1,10 +1,11 @@
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
-import { SiteHeader } from "@/components/site-header";
+import { AppSidebar } from "@/components/layouts/app-sidebar";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { SiteHeader } from "@/components/layouts/site-header";
 import type React from "react";
 import { Outlet, useLocation, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { projectApi } from "./api/projectApi";
+import { projectApi } from "@/api/projectApi";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "sonner";
 
@@ -56,18 +57,36 @@ function App() {
 
     // Normal pages
     const routeToHeader: Record<string, string> = {
-      "/": "Dashboard",
+      "/": "Chat",
+      "/dashboard": "Dashboard",
       "/projects": "Projects",
       "/analytics": "Analytics",
+      "/team": "Team",
+      "/capture": "Capture",
+      "/proposal": "Proposal",
+      "/prompts": "Prompts",
+      "/data-library": "Data Library",
+      "/reports": "Reports",
+      "/word-assistant": "Word Assistant",
+      "/settings": "Settings",
+      "/help": "Get Help",
+      "/search": "Search",
     };
 
+    // Handle chat routes like /c/:chatId
+    if (location.pathname.startsWith("/c/")) {
+      return { title: "Chat", icon: undefined };
+    }
+
     return {
-      title: routeToHeader[location.pathname.toLowerCase()] ?? "Dashboard",
+      title: routeToHeader[location.pathname.toLowerCase()] ?? "Chat",
       icon: undefined,
     };
   };
 
   const { title, icon } = getHeaderData();
+  const isChatRoute =
+    location.pathname === "/" || location.pathname.startsWith("/c/");
 
   return (
     <SidebarProvider
@@ -80,12 +99,18 @@ function App() {
     >
       <AppSidebar variant="inset" />
 
-      <SidebarInset>
+      <SidebarInset className="flex flex-col max-h-screen overflow-hidden">
         <SiteHeader title={title} icon={icon} />
-        <div className="flex flex-1 flex-col min-h-0 ">
-          <Outlet />
-        </div>
-        <Toaster /> /
+        {isChatRoute ? (
+          <div className="flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+        ) : (
+          <ScrollArea className="flex-1">
+            <Outlet />
+          </ScrollArea>
+        )}
+        <Toaster />
       </SidebarInset>
     </SidebarProvider>
   );

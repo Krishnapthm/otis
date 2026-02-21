@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { fetchMe, logout as apiLogout } from "./api/authApi";
+import { fetchMe, logout as apiLogout } from "@/api/authApi";
 import { User } from "lucide-react";
 
 type User = {
