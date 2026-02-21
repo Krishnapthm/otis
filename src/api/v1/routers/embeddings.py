@@ -1,38 +1,84 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+"""
+Embeddings Router - Refactored for One Vectorstore Per User
+
+New endpoints:
+- POST /embeddings/sync - Sync all pending documents to vectorstore
+- GET /embeddings/status - Get vectorstore status
+- DELETE /embeddings/clear - Clear vectorstore and reset documents
+"""
+
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
-import uuid
-from src.api.crud.embeddings import create_embeddings, delete_embedding, list_embeddings
-from src.api.db.models import Projects
-from src.api.db.schema import AuthResponse, EmbeddingCreateRequest, EmbeddingVersionDelete, EmbeddingVersionResponse
+
+from src.api.crud.embeddings import (
+    clear_user_vectorstore,
+    get_vectorstore_status,
+    sync_user_embeddings,
+)
 from src.api.db.models.session import get_db
-from langchain_core.documents import Document
+from src.api.db.schema import (
+    AuthResponse,
+    VectorstoreStatus,
+    VectorstoreSyncRequest,
+    VectorstoreSyncResponse,
+)
+from src.core.security import get_current_user
 
-from src.core.security import get_current_user, verify_project_access
 
-router = APIRouter(prefix="/project/{project_id}/embeddings")
+router = APIRouter(prefix="/embeddings")
 
-@router.post("/", response_model=EmbeddingVersionResponse)
-async def create_embedding(
-    project_id: uuid.UUID,
-    req: EmbeddingCreateRequest,
+
+@router.post("/sync", response_model=VectorstoreSyncResponse)
+async def sync_embeddings(
+    request: VectorstoreSyncRequest = None,
     db: AsyncSession = Depends(get_db),
-    current_user: Projects = Depends(verify_project_access)
+    current_user: AuthResponse = Depends(get_current_user),
 ):
-    return await create_embeddings(req.version_name, project_id, db, req.doc_id)
+    """
+    Sync documents to user's vectorstore.
+    
+    Idempotent: Only embeds documents that haven't been embedded yet.
+    If all documents are already synced, returns immediately.
+    
+    Optionally provide doc_ids to sync specific documents only.
+    """
+    doc_ids = request.doc_ids if request else None
+    return await sync_user_embeddings(current_user.user_id, db, doc_ids)
 
-@router.get("/", name="list embeddings", response_model=List[EmbeddingVersionResponse])
-async def create_embedding(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    return await list_embeddings(project_id, db)
 
-@router.delete("/", name="delete embedding", response_model=dict)
-async def delete_embeddings(request: EmbeddingVersionDelete, project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    return await delete_embedding(project_id, request.version_ids, db)
+@router.get("/status", response_model=VectorstoreStatus)
+async def get_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user),
+):
+    """
+    Get status of user's vectorstore.
+    
+    Returns:
+    - total_documents: All documents owned by user
+    - embedded_documents: Documents that have been embedded
+    - pending_documents: Documents waiting to be embedded
+    - status: Current vectorstore status (pending, processing, ready, failed)
+    - last_synced_at: When the last successful sync completed
+    """
+    return await get_vectorstore_status(current_user.user_id, db)
 
-@router.get("/{collection_id}", name="get embedding")
-async def get_embeddings(project_id: uuid.UUID, collection_id: uuid.UUID):
-    return "ph"
 
-@router.put("/{collection_id}", name="update embedding")
-async def update_embeddings(project_id: uuid.UUID, collection_id: uuid.UUID):
-    return "ph"
+@router.delete("/clear", response_model=dict)
+async def clear_embeddings(
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user),
+):
+    """
+    Clear user's vectorstore and reset all documents.
+    
+    Idempotent: Safe to call multiple times.
+    
+    This will:
+    - Delete all embeddings from the vectorstore
+    - Reset is_embedded=False on all user's documents
+    - Reset vectorstore status to 'pending'
+    
+    Documents themselves are NOT deleted.
+    """
+    return await clear_user_vectorstore(current_user.user_id, db)

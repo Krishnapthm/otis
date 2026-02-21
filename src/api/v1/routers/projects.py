@@ -24,9 +24,9 @@ async def list_projects(limit: int = 50, skip: int = 0, db: AsyncSession = Depen
     return await get_all_projects(db, current_user, limit=limit, skip=skip)
 
 @router.get("/{project_id}", name= "list project with id", response_model= ProjectResponse, status_code= status.HTTP_200_OK)
-async def list_project(project_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def list_project(project_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: AuthResponse = Depends(get_current_user)):
 
-    return await get_project(db, project_id)
+    return await get_project(db, project_id, current_user)
 
 @router.delete("/{project_id}", name="delete project with id", response_model= dict, status_code= status.HTTP_200_OK)
 async def delete_project(project_id: uuid.UUID, current_user: AuthResponse = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

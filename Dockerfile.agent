@@ -1,0 +1,17 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files first for better caching
+COPY agent/pyproject.toml agent/uv.lock* ./
+
+# Install dependencies using uv
+RUN uv sync --frozen
+
+# Copy the rest of the agent code
+COPY agent/ ./
+
+# The command will be specified in docker-compose.yml

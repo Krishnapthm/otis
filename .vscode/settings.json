@@ -1,0 +1,7 @@
+{
+  "python.analysis.autoImportCompletions": true,
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "python.analysis.extraPaths": ["./src"],
+  "python.analysis.typeCheckingMode": "off"
+}

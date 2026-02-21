@@ -9,6 +9,11 @@ services:
       - "5432:5432"
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d otis"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   pgadmin:
     image: dpage/pgadmin4
@@ -19,6 +24,19 @@ services:
       - "5050:80"
     depends_on:
       - db
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
     build:
@@ -35,8 +53,34 @@ services:
       - .env
       - .env.fastapi
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     command: uv run uvicorn src.api.v1.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api # Use the same Dockerfile as API
+    container_name: otis-worker
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads # Worker needs access to uploaded files
+    env_file:
+      - .env
+      - .env.fastapi
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    command: uv run python -m src.worker
 
   ollama:
     image: ollama/ollama:latest
@@ -47,5 +91,18 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
 
+  # agent:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.agent
+  #   ports:
+  #     - "8132:8132"
+  #   volumes:
+  #     - ./agent:/app
+  #   env_file:
+  #     - .env
+  #   command: uv run langgraph dev --host 0.0.0.0 --port 8132
+
 volumes:
   ollama_data:
+  redis_data:

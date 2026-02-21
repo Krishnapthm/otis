@@ -13,7 +13,6 @@ dependencies = [
     "langchain-ollama>=1.0.0",
     "langchain-openai>=1.0.0",
     "langgraph>=0.6.2",
-    "langgraph-checkpoint-postgres>=2.0.23",
     "psycopg[binary]>=3.2.9",
     "pymupdf4llm>=0.0.27",
     "pypdf>=5.9.0",
@@ -32,4 +31,8 @@ dependencies = [
     "pydantic[email]>=2.12.3",
     "tools>=1.0.15",
     "pymupdf>=1.26.5",
+    "redis>=7.1.0",
+    "rq>=2.6.1",
+    "langgraph-checkpoint-postgres>=3.0.0",
+    
 ]

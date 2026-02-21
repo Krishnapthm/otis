@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Agent Streaming + HITL Tester</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 16px;
+        max-width: 900px;
+      }
+      input,
+      button,
+      textarea {
+        margin: 4px 0;
+        padding: 6px;
+        width: 100%;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      pre {
+        background: #111;
+        color: #0f0;
+        padding: 12px;
+        height: 300px;
+        overflow-y: auto;
+        border: 1px solid #333;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .row button {
+        width: auto;
+      }
+      .status {
+        padding: 8px;
+        margin: 8px 0;
+        border-radius: 4px;
+        background: #f0f0f0;
+      }
+      .status.running {
+        background: #ffe6cc;
+      }
+      .status.complete {
+        background: #d4edda;
+      }
+      .status.error {
+        background: #f8d7da;
+      }
+      .thread-info {
+        background: #e3f2fd;
+        padding: 8px;
+        margin: 8px 0;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>Agent Stream Tester</h2>
+
+    <div id="status" class="status">Ready</div>
+    <div id="threadInfo" class="thread-info" style="display: none">
+      Thread ID: <span id="threadId">-</span>
+    </div>
+
+    <!-- COLLECTION ID -->
+    <label>Collection ID</label>
+    <input
+      id="collectionId"
+      placeholder="collection_id"
+      value="test_collection"
+    />
+
+    <!-- DOC IDS -->
+    <label>Document IDs</label>
+    <div id="docIds"></div>
+    <button onclick="addDocId()">+ Add doc_id</button>
+
+    <hr />
+
+    <!-- START -->
+    <button id="startBtn" onclick="startAgent()">▶ Start Agent</button>
+    <button id="stopBtn" onclick="stopAgent()" disabled>⏹ Stop Stream</button>
+
+    <h3>Streaming Output</h3>
+    <pre id="log"></pre>
+
+    <hr />
+
+    <!-- RESUME / HITL -->
+    <label>Resume with Selected Concepts (JSON array of Concept objects)</label>
+    <div class="row">
+      <textarea
+        id="conceptsInput"
+        placeholder='[{"name": "Concept Name", "summary": "Summary here"}]'
+        rows="5"
+      ></textarea>
+    </div>
+    <button id="resumeBtn" onclick="resumeAgent()" disabled>
+      ▶ Resume Agent
+    </button>
+
+    <details style="margin: 8px 0">
+      <summary style="cursor: pointer">Example Format</summary>
+      <pre style="height: auto; margin-top: 8px">
+[
+  {
+    "name": "Risks & Mitigation",
+    "summary": "Identified risks include high LLM costs..."
+  },
+  {
+    "name": "Another Concept",
+    "summary": "Another summary..."
+  }
+]</pre
+      >
+      <button onclick="fillExample()" style="margin-top: 8px">
+        Fill Example
+      </button>
+    </details>
+
+    <script>
+      const API_BASE = "http://localhost:8000/v1"; // 🔴 Change to your backend URL
+      const log = document.getElementById("log");
+      const statusEl = document.getElementById("status");
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      const resumeBtn = document.getElementById("resumeBtn");
+      const threadInfo = document.getElementById("threadInfo");
+      const threadIdEl = document.getElementById("threadId");
+
+      let abortController = null;
+      let currentThreadId = null;
+
+      function setStatus(text, type = "") {
+        statusEl.textContent = text;
+        statusEl.className = "status " + type;
+      }
+
+      function setThreadId(id) {
+        currentThreadId = id;
+        threadIdEl.textContent = id;
+        threadInfo.style.display = id ? "block" : "none";
+        resumeBtn.disabled = !id;
+      }
+
+      function addDocId(value = "") {
+        const div = document.createElement("div");
+        div.className = "row";
+
+        const input = document.createElement("input");
+        input.placeholder = "doc_id (UUID)";
+        input.value = value;
+
+        const btn = document.createElement("button");
+        btn.textContent = "✕";
+        btn.onclick = () => div.remove();
+
+        div.appendChild(input);
+        div.appendChild(btn);
+        document.getElementById("docIds").appendChild(div);
+      }
+
+      // Add one field by default
+      addDocId();
+
+      function appendLog(message) {
+        log.textContent += message + "\n";
+        log.scrollTop = log.scrollHeight;
+      }
+
+      async function processStream(response) {
+        appendLog("▶ Streaming events...\n");
+        setStatus("Streaming...", "running");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            appendLog("\n✓ Stream completed");
+            setStatus("Stream completed", "complete");
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const messages = buffer.split("\n\n");
+          buffer = messages.pop() || "";
+
+          for (const message of messages) {
+            if (message.trim() === "") continue;
+
+            const lines = message.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const dataStr = line.slice(6);
+
+                try {
+                  const data = JSON.parse(dataStr);
+
+                  appendLog(`📦 Mode: ${data.mode}`);
+                  appendLog(
+                    `   Payload: ${JSON.stringify(data.payload, null, 2)}`
+                  );
+                  appendLog("---");
+
+                  // Check if waiting for human input
+                  if (
+                    data.payload?.requires_hitl ||
+                    data.payload?.needs_resume
+                  ) {
+                    setStatus("⏸️ Waiting for resume with concepts", "running");
+                  }
+                } catch (e) {
+                  appendLog(`📄 Raw: ${dataStr}`);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      async function startAgent() {
+        log.textContent = "";
+
+        const docIds = [...document.querySelectorAll("#docIds input")]
+          .map((i) => i.value.trim())
+          .filter(Boolean);
+
+        const collectionId = document
+          .getElementById("collectionId")
+          .value.trim();
+
+        if (!docIds.length || !collectionId) {
+          alert("doc_ids and collection_id are required");
+          return;
+        }
+
+        abortController = new AbortController();
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        setStatus("Starting agent...", "running");
+
+        try {
+          const response = await fetch(`${API_BASE}/graph/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              doc_ids: docIds,
+              collection_id: collectionId,
+            }),
+            signal: abortController.signal,
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`HTTP ${response.status}: ${text}`);
+          }
+
+          // CRITICAL: Extract thread ID BEFORE consuming the stream
+          const threadId = response.headers.get("X-Thread-ID");
+          appendLog(`🔗 Thread ID: ${threadId || "NOT FOUND"}\n`);
+
+          if (threadId) {
+            setThreadId(threadId);
+            appendLog(`✅ Resume button enabled\n`);
+          } else {
+            appendLog(`⚠️ No X-Thread-ID header found!\n`);
+          }
+
+          await processStream(response);
+        } catch (err) {
+          if (err.name === "AbortError") {
+            appendLog("\n⏹ Stream stopped by user");
+            setStatus("Stopped", "");
+          } else {
+            appendLog(`\n❌ Error: ${err.message}`);
+            setStatus("Error: " + err.message, "error");
+          }
+        } finally {
+          startBtn.disabled = false;
+          stopBtn.disabled = true;
+          abortController = null;
+        }
+      }
+
+      function stopAgent() {
+        if (abortController) {
+          abortController.abort();
+        }
+      }
+
+      function fillExample() {
+        document.getElementById("conceptsInput").value = JSON.stringify(
+          [
+            {
+              name: "Risks & Mitigation",
+              summary:
+                "Identified risks include high LLM costs and adoption reluctance; strategies include hybrid models for cost efficiency and pilot programs to demonstrate ROI.",
+            },
+          ],
+          null,
+          2
+        );
+      }
+
+      async function resumeAgent() {
+        if (!currentThreadId) {
+          alert("No active thread ID. Start an agent first.");
+          return;
+        }
+
+        const conceptsStr = document
+          .getElementById("conceptsInput")
+          .value.trim();
+        if (!conceptsStr) {
+          alert("Please enter selected_concepts as a JSON array");
+          return;
+        }
+
+        let selectedConcepts;
+        try {
+          selectedConcepts = JSON.parse(conceptsStr);
+          if (!Array.isArray(selectedConcepts)) {
+            throw new Error("Must be an array");
+          }
+        } catch (e) {
+          alert("Invalid JSON array: " + e.message);
+          return;
+        }
+
+        abortController = new AbortController();
+        resumeBtn.disabled = true;
+        stopBtn.disabled = false;
+        setStatus("Resuming agent...", "running");
+
+        try {
+          const response = await fetch(
+            `${API_BASE}/graph/resume/${currentThreadId}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                selected_concepts: selectedConcepts,
+              }),
+              signal: abortController.signal,
+            }
+          );
+
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`HTTP ${response.status}: ${text}`);
+          }
+
+          appendLog(
+            `\n👤 Resuming with concepts: ${JSON.stringify(selectedConcepts)}\n`
+          );
+          await processStream(response);
+        } catch (err) {
+          if (err.name === "AbortError") {
+            appendLog("\n⏹ Stream stopped by user");
+            setStatus("Stopped", "");
+          } else {
+            appendLog(`\n❌ Resume error: ${err.message}`);
+            setStatus("Error: " + err.message, "error");
+          }
+        } finally {
+          resumeBtn.disabled = false;
+          stopBtn.disabled = true;
+          abortController = null;
+        }
+      }
+    </script>
+  </body>
+</html>
