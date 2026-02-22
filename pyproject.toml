@@ -34,5 +34,4 @@ dependencies = [
     "redis>=7.1.0",
     "rq>=2.6.1",
     "langgraph-checkpoint-postgres>=3.0.0",
-    
 ]

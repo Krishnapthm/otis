@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 from pgvector.sqlalchemy.vector import VECTOR
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -195,6 +196,90 @@ class Projects(Base):
     )
     mcq: Mapped[List["Mcqs"]] = relationship(
         "Mcqs", secondary="project_mcqs", back_populates="project"
+    )
+
+
+class Chats(Base):
+    __tablename__ = "chats"
+    __table_args__ = (
+        CheckConstraint(
+            "status = ANY (ARRAY['active'::text, 'archived'::text, 'deleted'::text])",
+            name="chats_status_check",
+        ),
+        ForeignKeyConstraint(
+            ["user_id"],
+            ["users.user_id"],
+            ondelete="CASCADE",
+            name="chats_user_id_fkey",
+        ),
+        PrimaryKeyConstraint("chat_id", name="chats_pkey"),
+        Index("idx_chats_last_message_at", "last_message_at"),
+        Index("idx_chats_status", "status"),
+        Index("idx_chats_user_id", "user_id"),
+    )
+
+    chat_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'active'::text"))
+    total_input_tokens: Mapped[int] = mapped_column(
+        Integer, server_default=text("0")
+    )
+    total_output_tokens: Mapped[int] = mapped_column(
+        Integer, server_default=text("0")
+    )
+    title: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    last_message_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+    deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True)
+    )
+
+
+class ChatMessages(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "role = ANY (ARRAY['user'::text, 'assistant'::text, 'tool'::text])",
+            name="chat_messages_role_check",
+        ),
+        CheckConstraint(
+            "status = ANY (ARRAY['pending'::text, 'streaming'::text, 'completed'::text, 'failed'::text])",
+            name="chat_messages_status_check",
+        ),
+        ForeignKeyConstraint(
+            ["chat_id"],
+            ["chats.chat_id"],
+            ondelete="CASCADE",
+            name="chat_messages_chat_id_fkey",
+        ),
+        PrimaryKeyConstraint("message_id", name="chat_messages_pkey"),
+        Index("idx_messages_chat_id", "chat_id"),
+        Index("idx_messages_chat_sequence", "chat_id", "sequence"),
+    )
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    chat_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    role: Mapped[str] = mapped_column(Text)
+    sequence: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'completed'::text"))
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    structured_data: Mapped[Optional[dict]] = mapped_column(JSONB)
+    input_tokens: Mapped[Optional[int]] = mapped_column(Integer)
+    output_tokens: Mapped[Optional[int]] = mapped_column(Integer)
+    error: Mapped[Optional[dict]] = mapped_column(JSONB)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
     )
 
 

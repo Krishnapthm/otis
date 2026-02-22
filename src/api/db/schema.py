@@ -202,3 +202,66 @@ class Concept(BaseModel):
 
 class ResumeRequest(BaseModel):
     selected_concepts: List[Concept]
+
+
+# ============================================================================
+# Chat Schemas
+# ============================================================================
+
+class ChatCreate(BaseModel):
+    title: Optional[str] = None
+
+
+class ChatUpdate(BaseModel):
+    title: Optional[str] = None
+    status: Optional[Literal["active", "archived", "deleted"]] = None
+
+
+class ChatResponse(BaseModel):
+    chat_id: UUID4
+    user_id: UUID4
+    status: Literal["active", "archived", "deleted"]
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    title: Optional[str] = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    last_message_at: Optional[datetime.datetime] = None
+    deleted_at: Optional[datetime.datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ChatMessageCreate(BaseModel):
+    role: Literal["user", "assistant", "tool"]
+    content: Optional[str] = None
+    structured_data: Optional[dict] = None
+    status: Literal["pending", "streaming", "completed", "failed"] = "completed"
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    error: Optional[dict] = None
+
+
+class ChatMessageUpdate(BaseModel):
+    content: Optional[str] = None
+    structured_data: Optional[dict] = None
+    status: Optional[Literal["pending", "streaming", "completed", "failed"]] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    error: Optional[dict] = None
+
+
+class ChatMessageResponse(BaseModel):
+    message_id: UUID4
+    chat_id: UUID4
+    role: Literal["user", "assistant", "tool"]
+    sequence: int
+    status: Literal["pending", "streaming", "completed", "failed"]
+    content: Optional[str] = None
+    structured_data: Optional[dict] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    error: Optional[dict] = None
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}

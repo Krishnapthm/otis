@@ -19,3 +19,15 @@ from .embeddings import (
     get_vectorstore_status,
     clear_user_vectorstore,
 )
+from .chat import (
+    create_chat,
+    list_chats,
+    get_chat,
+    update_chat,
+    delete_chat,
+    create_chat_message,
+    list_chat_messages,
+    get_chat_message,
+    update_chat_message,
+    delete_chat_message,
+)

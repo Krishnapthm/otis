@@ -2,7 +2,7 @@ from os import getenv
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.api.v1.routers import auth, embeddings, mcqs, docs, projects, agent
+from src.api.v1.routers import auth, embeddings, mcqs, docs, projects, agent, chat
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from contextlib import asynccontextmanager
@@ -41,6 +41,7 @@ app.include_router(projects.router, prefix="/v1", tags=["Projects"])
 app.include_router(embeddings.router, prefix="/v1", tags=["Embeddings"])
 app.include_router(auth.router, prefix="/v1", tags=["Authentication"])
 app.include_router(agent.router, prefix="/v1", tags=["Agent"])
+app.include_router(chat.router, prefix="/v1", tags=["Chat"])
 
 app.add_middleware(
     CORSMiddleware,
