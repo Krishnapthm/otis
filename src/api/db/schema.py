@@ -9,6 +9,7 @@ import datetime
 # MCQ Schemas
 # ============================================================================
 
+
 class Options(BaseModel):
     id: Literal["A", "B", "C", "D"] = Field(description="Option id")
     text: str = Field(description="Options for the answer of MCQ")
@@ -43,6 +44,7 @@ class ReadMCQ(CreateMCQ):
 # Document Schemas
 # ============================================================================
 
+
 class DocBase(BaseModel):
     filename: str
     file_type: str
@@ -69,6 +71,7 @@ class DocDelete(BaseModel):
 
 class DocLinkRequest(BaseModel):
     """Request to link existing documents to a project"""
+
     doc_ids: List[uuid.UUID]
 
 
@@ -81,8 +84,10 @@ class Metadata(BaseModel):
 # Vectorstore/Embedding Schemas (Simplified - One per User)
 # ============================================================================
 
+
 class VectorstoreStatus(BaseModel):
     """Status of a user's vectorstore"""
+
     user_id: UUID4
     collection_id: Optional[UUID4] = None
     status: Literal["pending", "processing", "ready", "failed"]
@@ -95,11 +100,13 @@ class VectorstoreStatus(BaseModel):
 
 class VectorstoreSyncRequest(BaseModel):
     """Optional: specify which documents to sync (if empty, sync all pending)"""
+
     doc_ids: Optional[List[uuid.UUID]] = None
 
 
 class VectorstoreSyncResponse(BaseModel):
     """Response after initiating sync"""
+
     status: str
     message: str
     documents_queued: int
@@ -113,6 +120,7 @@ class EmbeddingResponse(Metadata):
 # ============================================================================
 # Project Schemas
 # ============================================================================
+
 
 class ProjectBase(BaseModel):
     project_name: str
@@ -128,6 +136,7 @@ class ProjectResponse(ProjectBase):
 # ============================================================================
 # User/Auth Schemas
 # ============================================================================
+
 
 class CreateUser(BaseModel):
     email: str
@@ -184,6 +193,7 @@ class UserResponse(BaseModel):
 # Agent/Graph Schemas
 # ============================================================================
 
+
 class ChunkDocuments(BaseModel):
     doc_name: str
     chunk_count: int
@@ -191,6 +201,7 @@ class ChunkDocuments(BaseModel):
 
 class StartGraphRequest(BaseModel):
     """Updated: Uses user's collection instead of project-specific collection"""
+
     doc_ids: List[uuid.UUID]
     # collection_id is now derived from user's vectorstore, not passed
 
@@ -207,6 +218,7 @@ class ResumeRequest(BaseModel):
 # ============================================================================
 # Chat Schemas
 # ============================================================================
+
 
 class ChatCreate(BaseModel):
     title: Optional[str] = None
@@ -236,6 +248,7 @@ class ChatMessageCreate(BaseModel):
     role: Literal["user", "assistant", "tool"]
     content: Optional[str] = None
     structured_data: Optional[dict] = None
+    doc_ids: Optional[List[uuid.UUID]] = None
     status: Literal["pending", "streaming", "completed", "failed"] = "completed"
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
@@ -245,6 +258,7 @@ class ChatMessageCreate(BaseModel):
 class ChatMessageUpdate(BaseModel):
     content: Optional[str] = None
     structured_data: Optional[dict] = None
+    doc_ids: Optional[List[uuid.UUID]] = None
     status: Optional[Literal["pending", "streaming", "completed", "failed"]] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
@@ -259,9 +273,15 @@ class ChatMessageResponse(BaseModel):
     status: Literal["pending", "streaming", "completed", "failed"]
     content: Optional[str] = None
     structured_data: Optional[dict] = None
+    doc_ids: List[UUID4] = Field(default_factory=list)
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     error: Optional[dict] = None
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}
+
+
+class ChatInvokeRequest(BaseModel):
+    message: str
+    doc_ids: Optional[List[uuid.UUID]] = None

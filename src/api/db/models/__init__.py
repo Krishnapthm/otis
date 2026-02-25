@@ -80,7 +80,7 @@ class Documents(Base):
     updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
     content_md: Mapped[Optional[str]] = mapped_column(Text)
     content_hash: Mapped[Optional[str]] = mapped_column(String(64))
-    
+
     # Deduplication fields
     file_hash: Mapped[Optional[str]] = mapped_column(String(64))  # SHA-256 of raw file
     status: Mapped[str] = mapped_column(
@@ -89,7 +89,7 @@ class Documents(Base):
     canonical_document_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         Uuid, ForeignKey("documents.doc_id", ondelete="SET NULL"), nullable=True
     )  # Links to canonical doc with same content_hash
-    
+
     # Track embedding status (idempotency)
     is_embedded: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     embedded_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime)
@@ -99,7 +99,9 @@ class Documents(Base):
     project: Mapped[List["Projects"]] = relationship(
         "Projects", secondary="project_docs", back_populates="doc"
     )
-
+    chat_message_documents: Mapped[List["ChatMessageDocuments"]] = relationship(
+        "ChatMessageDocuments", back_populates="doc"
+    )
 
 
 class LangchainPgCollection(Base):
@@ -127,6 +129,7 @@ class UserVectorstore(Base):
     One vectorstore per user. Stores the user's single embedding collection.
     Replaces the old EmbeddingVersions model.
     """
+
     __tablename__ = "user_vectorstores"
     __table_args__ = (
         PrimaryKeyConstraint("user_id", name="user_vectorstores_pkey"),
@@ -223,12 +226,8 @@ class Chats(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     status: Mapped[str] = mapped_column(Text, server_default=text("'active'::text"))
-    total_input_tokens: Mapped[int] = mapped_column(
-        Integer, server_default=text("0")
-    )
-    total_output_tokens: Mapped[int] = mapped_column(
-        Integer, server_default=text("0")
-    )
+    total_input_tokens: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    total_output_tokens: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     title: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
@@ -280,6 +279,45 @@ class ChatMessages(Base):
     error: Mapped[Optional[dict]] = mapped_column(JSONB)
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True), server_default=text("now()")
+    )
+
+    chat_message_documents: Mapped[List["ChatMessageDocuments"]] = relationship(
+        "ChatMessageDocuments", back_populates="message"
+    )
+
+
+class ChatMessageDocuments(Base):
+    __tablename__ = "chat_message_documents"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["doc_id"],
+            ["documents.doc_id"],
+            ondelete="CASCADE",
+            name="chat_message_documents_doc_id_fkey",
+        ),
+        ForeignKeyConstraint(
+            ["message_id"],
+            ["chat_messages.message_id"],
+            ondelete="CASCADE",
+            name="chat_message_documents_message_id_fkey",
+        ),
+        PrimaryKeyConstraint("cmd_id", name="chat_message_documents_pkey"),
+    )
+
+    cmd_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    message_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    doc_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+    doc: Mapped[Optional["Documents"]] = relationship(
+        "Documents", back_populates="chat_message_documents"
+    )
+    message: Mapped[Optional["ChatMessages"]] = relationship(
+        "ChatMessages", back_populates="chat_message_documents"
     )
 
 
@@ -351,10 +389,11 @@ t_project_mcqs = Table(
 class ConceptCache(Base):
     """
     Cache for concept extraction results.
-    
+
     Prevents redundant LLM calls for documents with identical content.
     Keyed by (content_hash, extractor_version) with 90-day TTL.
     """
+
     __tablename__ = "concept_cache"
     __table_args__ = (
         UniqueConstraint("content_hash", "extractor_version", name="uq_concept_cache"),
@@ -377,10 +416,11 @@ class ConceptCache(Base):
 class MCQCache(Base):
     """
     Cache for MCQ generation results.
-    
+
     Prevents redundant LLM calls for identical concept sets with same parameters.
     Keyed by (concept_set_id, generator_version, params_hash) with 90-day TTL.
     """
+
     __tablename__ = "mcq_cache"
     __table_args__ = (
         UniqueConstraint(
@@ -401,4 +441,3 @@ class MCQCache(Base):
     expires_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=text("now() + interval '90 days'")
     )
-

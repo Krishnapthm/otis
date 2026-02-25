@@ -234,6 +234,7 @@ class Documents(Base):
     canonical_document_reverse: Mapped[list['Documents']] = relationship('Documents', remote_side=[canonical_document_id], back_populates='canonical_document')
     user: Mapped['Users'] = relationship('Users', back_populates='documents')
     project: Mapped[list['Projects']] = relationship('Projects', secondary='project_docs', back_populates='doc')
+    chat_message_documents: Mapped[list['ChatMessageDocuments']] = relationship('ChatMessageDocuments', back_populates='doc')
 
 
 class LangchainPgEmbedding(Base):
@@ -297,6 +298,7 @@ class ChatMessages(Base):
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'))
 
     chat: Mapped['Chats'] = relationship('Chats', back_populates='chat_messages')
+    chat_message_documents: Mapped[list['ChatMessageDocuments']] = relationship('ChatMessageDocuments', back_populates='message')
     mcqs: Mapped[list['Mcqs']] = relationship('Mcqs', back_populates='message')
 
 
@@ -308,6 +310,23 @@ t_project_docs = Table(
     ForeignKeyConstraint(['project_id'], ['projects.project_id'], ondelete='CASCADE', name='project_docs_project_id_fkey'),
     PrimaryKeyConstraint('project_id', 'doc_id', name='project_docs_pkey')
 )
+
+
+class ChatMessageDocuments(Base):
+    __tablename__ = 'chat_message_documents'
+    __table_args__ = (
+        ForeignKeyConstraint(['doc_id'], ['documents.doc_id'], ondelete='CASCADE', name='chat_message_documents_doc_id_fkey'),
+        ForeignKeyConstraint(['message_id'], ['chat_messages.message_id'], ondelete='CASCADE', name='chat_message_documents_message_id_fkey'),
+        PrimaryKeyConstraint('cmd_id', name='chat_message_documents_pkey')
+    )
+
+    cmd_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text('gen_random_uuid()'))
+    message_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    doc_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(True), server_default=text('now()'))
+
+    doc: Mapped[Optional['Documents']] = relationship('Documents', back_populates='chat_message_documents')
+    message: Mapped[Optional['ChatMessages']] = relationship('ChatMessages', back_populates='chat_message_documents')
 
 
 class Mcqs(Base):

@@ -18,7 +18,7 @@ def create_agent_builder() -> StateGraph:
         frequency_penalty=0.2,
     )
 
-    nodes = AgentNodes(llm)
+    nodes = AgentNodes(llm=llm, guardrail_llm=llm)
 
     workflow = StateGraph(AgentState)
 

@@ -1,7 +1,9 @@
 import asyncio
+from cmd import PROMPT
 from email.mime import base
 import json
 from typing import List
+from unittest import result
 from langchain.tools import tool, ToolRuntime
 from langchain.messages import SystemMessage, HumanMessage
 from langchain_ollama import OllamaEmbeddings
@@ -13,7 +15,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
 from src.agents.utils.prompts import PROMPTS
 from src.agents.utils.services.document_service import fetch_document_content
-from src.agents.utils.state import AgentState, DocumentContent, Overview, SearchQueries
+from src.agents.utils.state import (
+    AgentState,
+    BeforeAgentGuardrail,
+    DocumentContent,
+    Overview,
+    SearchQueries,
+    State,
+)
 
 from src.api.db.models.session import async_session_maker
 
@@ -27,6 +36,9 @@ embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="http://ollama:
 load_dotenv()
 
 llm = AzureChatOpenAI(azure_deployment="gpt-4o-mini", api_version="2024-12-01-preview")
+guardrail_llm = AzureChatOpenAI(
+    azure_deployment="gpt-4.1-nano", api_version="2024-12-01-preview"
+)
 # llm_overview = AzureChatOpenAI(
 #     azure_deployment="gpt-4o-mini",
 #     api_version="2024-12-01-preview",
@@ -42,28 +54,27 @@ human_msg = HumanMessage("ping")
 
 messages = [sys_msg, human_msg]
 
-# async_engine = create_async_engine(
-#     "postgresql+asyncpg://user:password@db:5432/otis",  # asyncpg driver!
-#     echo=True,  # Optional: logging
-# )
-
-
-# import asyncio
-# from typing import List
-
-# from langchain_core.tools import tool
-# from langgraph.types import interrupt
-# from langgraph.runtime import ToolRuntime
-
-# assuming Overview is a Pydantic model
-# from your.schemas import Overview
-
 
 class AgentNodes:
-    def __init__(self, llm_overview: AzureChatOpenAI):
-        self.base_llm = llm_overview
+    def __init__(self, llm: AzureChatOpenAI, guardrail_llm: AzureChatOpenAI):
+        self.base_llm = llm
         self.llm_overview = self.base_llm.with_structured_output(Overview)
         self.llm_queries = self.base_llm.with_structured_output(SearchQueries)
+        self.guardrail_llm = guardrail_llm.with_structured_output(BeforeAgentGuardrail)
+
+    async def guardrail_node(self, state: State) -> dict:
+        """Entry guardrail node to validate intent and block invalid requests"""
+        prompt = await PROMPTS["before_agent_guardrail"].ainvoke(
+            {"user_request": state["chat_messages"]}
+        )
+        result = await self.guardrail_llm.ainvoke(prompt)
+
+        return {"intent": result}
+
+    async def chat_model(self, state: State) -> dict:
+
+        response = await self.base_llm.ainvoke(state["chat_messages"])
+        return {"chat_messages": [response]}
 
     async def fetch_documents(self, state: AgentState) -> dict:
         writer = get_stream_writer()

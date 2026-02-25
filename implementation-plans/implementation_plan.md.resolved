@@ -1,0 +1,130 @@
+# TanStack Query Document Architecture
+
+Replace manual `useState`/`useEffect` data fetching and hardcoded mock data with a proper TanStack Query server-state layer for documents.
+
+## Audit Summary
+
+| Issue | Location | Problem |
+|-------|----------|---------|
+| Server state in `useState` | [data-library.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx#L38) | [documents](file:///home/krishna/projects/otis/frontend/otis-ui/src/components/features/documents) stored via `useState` + `useEffect` → no caching, refetch on every mount |
+| Manual upload side-effects | [data-library.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx#L121-L152) | [uploadUserDocuments()](file:///home/krishna/projects/otis/frontend/otis-ui/src/api/docApi.ts#114-129) called directly, result manually prepended to local state |
+| Manual delete side-effects | [data-library.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx#L188-L214) | [deleteDocumentsFromProject()](file:///home/krishna/projects/otis/frontend/otis-ui/src/api/docApi.ts#65-75) called directly, manual state filter |
+| Hardcoded mock data for mentions | [chat-page.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/components/features/chat/chat-page.tsx#L57) | `MOCK_DOCUMENTS` used as mention trigger items — never real data |
+| TanStack Query not installed | [package.json](file:///home/krishna/projects/otis/frontend/otis-ui/package.json) | Only `@tanstack/react-table` exists, no `@tanstack/react-query` |
+| No QueryClientProvider | [main.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/main.tsx) | Missing provider — must be added at app root |
+
+---
+
+## Proposed Changes
+
+### Setup & Infrastructure
+
+#### [NEW] [queryKeys.ts](file:///home/krishna/projects/otis/frontend/otis-ui/src/api/queryKeys.ts)
+
+Centralized query key factory:
+
+```typescript
+export const queryKeys = {
+  documents: {
+    all: ["documents"] as const,
+    detail: (docId: string) => ["documents", docId] as const,
+  },
+  chat: {
+    all: ["chat"] as const,
+    detail: (chatId: string) => ["chat", chatId] as const,
+    messages: (chatId: string) => ["chat", chatId, "messages"] as const,
+    attachments: (chatId: string) => ["chat", chatId, "attachments"] as const,
+  },
+};
+```
+
+#### [MODIFY] [main.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/main.tsx)
+
+Add `QueryClientProvider` wrapping the app (inside `AuthProvider`, outside `RouterProvider`). Include `ReactQueryDevtools` in dev mode.
+
+---
+
+### TanStack Query Hooks
+
+#### [NEW] [useDocuments.ts](file:///home/krishna/projects/otis/frontend/otis-ui/src/hooks/useDocuments.ts)
+
+```typescript
+// useQuery wrapper around getAllUserDocuments()
+// staleTime: 5 minutes (docs rarely change)
+// gcTime: 10 minutes
+// Returns { documents, isLoading, error, ... }
+```
+
+#### [NEW] [useUploadDocument.ts](file:///home/krishna/projects/otis/frontend/otis-ui/src/hooks/useUploadDocument.ts)
+
+```typescript
+// useMutation around uploadUserDocuments()
+// onSuccess: use queryClient.setQueryData to prepend new docs to cache
+// Returns { uploadDocuments, isUploading, ... }
+```
+
+#### [NEW] [useDeleteDocuments.ts](file:///home/krishna/projects/otis/frontend/otis-ui/src/hooks/useDeleteDocuments.ts)
+
+```typescript
+// useMutation around deleteDocumentsFromProject()
+// onSuccess: use queryClient.setQueryData to remove deleted docs from cache
+// Returns { deleteDocuments, isDeleting, ... }
+```
+
+---
+
+### Refactor Data Library
+
+#### [MODIFY] [data-library.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx)
+
+- Remove [documents](file:///home/krishna/projects/otis/frontend/otis-ui/src/components/features/documents)/`isLoading` `useState` + `useEffect`/[loadDocuments](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx#66-78)
+- Use `useDocuments()` → `{ documents, isLoading }`
+- Replace [handleUpload](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx#121-153) body with `useUploadDocument().uploadDocuments(files)`
+- Replace [executeDelete](file:///home/krishna/projects/otis/frontend/otis-ui/src/pages/data-library.tsx#188-215) body with `useDeleteDocuments().deleteDocuments()`
+- Keep `isUploading`/`isDeleting` derived from mutation `isPending`
+- Keep UI-only state (`selectedDocs`, `searchQuery`, `viewMode`, etc.) in `useState`
+
+---
+
+### Wire Mentions to Real Data
+
+#### [MODIFY] [chat-page.tsx](file:///home/krishna/projects/otis/frontend/otis-ui/src/components/features/chat/chat-page.tsx)
+
+- Import and call `useDocuments()`
+- Map `Document[]` → `MentionItem[]` (`{ id: doc.doc_id, label: doc.filename }`)
+- Replace static `MOCK_DOCUMENTS` with the mapped live data in `MENTION_TRIGGERS`
+- Use `useMemo` to memoize the triggers array so it only recomputes when documents change
+
+#### [MODIFY] [mention-types.ts](file:///home/krishna/projects/otis/frontend/otis-ui/src/components/features/mention/mention-types.ts)
+
+- Remove the `MOCK_DOCUMENTS` export (dead code after above change)
+
+#### [MODIFY] [index.ts](file:///home/krishna/projects/otis/frontend/otis-ui/src/components/features/mention/index.ts)
+
+- Remove `MOCK_DOCUMENTS` re-export
+
+---
+
+## Verification Plan
+
+### Build Check
+```bash
+cd /home/krishna/projects/otis/frontend/otis-ui && npm run build
+```
+The project must compile with zero TypeScript errors.
+
+### Manual Verification
+
+> [!IMPORTANT]
+> No automated tests exist in this project. Verification is manual via the dev server.
+
+1. **Start dev server**: `cd /home/krishna/projects/otis/frontend/otis-ui && npm run dev`
+2. **Data Library page** (`/data-library`):
+   - Documents should load on page visit
+   - Navigate away and back — documents should appear instantly from cache (no loading skeleton flash)
+   - Upload a file — it should appear immediately without a page refresh
+   - Delete a file — it should disappear immediately
+3. **Chat mention dropdown** (`/` or `/c/:chatId`):
+   - Type `@` in the chat input — real documents from the API should appear in the dropdown (not mock data)
+   - Type `@par` — dropdown should filter by filename
+   - Upload a document on the Data Library page, navigate to chat, type `@` — newly uploaded doc should appear without any separate API call

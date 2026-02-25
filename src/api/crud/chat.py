@@ -3,10 +3,16 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.db.models import Chats, ChatMessages, Users
+from src.api.db.models import (
+    ChatMessageDocuments,
+    ChatMessages,
+    Chats,
+    Documents,
+    Users,
+)
 from src.api.db.schema import (
     AuthResponse,
     ChatCreate,
@@ -88,11 +94,90 @@ def _message_to_response(message: ChatMessages) -> ChatMessageResponse:
         status=message.status,
         content=message.content,
         structured_data=message.structured_data,
+        doc_ids=[],
         input_tokens=message.input_tokens,
         output_tokens=message.output_tokens,
         error=message.error,
         created_at=message.created_at,
     )
+
+
+def _dedupe_doc_ids(doc_ids: Optional[List[uuid.UUID]]) -> List[uuid.UUID]:
+    if not doc_ids:
+        return []
+
+    seen: set[uuid.UUID] = set()
+    unique_doc_ids: List[uuid.UUID] = []
+    for doc_id in doc_ids:
+        if doc_id not in seen:
+            seen.add(doc_id)
+            unique_doc_ids.append(doc_id)
+    return unique_doc_ids
+
+
+async def _validate_doc_ids_for_user(
+    db: AsyncSession,
+    current_user: AuthResponse,
+    doc_ids: List[uuid.UUID],
+) -> List[uuid.UUID]:
+    if not doc_ids:
+        return []
+
+    result = await db.execute(
+        select(Documents.doc_id).where(
+            and_(
+                Documents.doc_id.in_(doc_ids),
+                Documents.user_id == current_user.user_id,
+            )
+        )
+    )
+    existing_doc_ids = {row[0] for row in result.all()}
+    missing = [doc_id for doc_id in doc_ids if doc_id not in existing_doc_ids]
+    if missing:
+        raise HTTPException(
+            status_code=404,
+            detail="One or more documents not found or you do not have access",
+        )
+
+    return doc_ids
+
+
+async def _replace_message_documents(
+    db: AsyncSession,
+    message_id: uuid.UUID,
+    doc_ids: List[uuid.UUID],
+) -> None:
+    await db.execute(
+        delete(ChatMessageDocuments).where(
+            ChatMessageDocuments.message_id == message_id
+        )
+    )
+
+    for doc_id in doc_ids:
+        db.add(ChatMessageDocuments(message_id=message_id, doc_id=doc_id))
+
+
+async def _get_message_doc_ids(
+    db: AsyncSession,
+    message_ids: List[uuid.UUID],
+) -> dict[uuid.UUID, List[uuid.UUID]]:
+    if not message_ids:
+        return {}
+
+    result = await db.execute(
+        select(ChatMessageDocuments.message_id, ChatMessageDocuments.doc_id)
+        .where(ChatMessageDocuments.message_id.in_(message_ids))
+        .order_by(ChatMessageDocuments.created_at.asc())
+    )
+
+    message_doc_ids: dict[uuid.UUID, List[uuid.UUID]] = {
+        message_id: [] for message_id in message_ids
+    }
+    for message_id, doc_id in result.all():
+        if message_id is not None and doc_id is not None:
+            message_doc_ids.setdefault(message_id, []).append(doc_id)
+
+    return message_doc_ids
 
 
 async def create_chat(
@@ -161,7 +246,9 @@ async def update_chat(
 
     if payload.status is not None:
         chat.status = payload.status
-        chat.deleted_at = datetime.now(timezone.utc) if payload.status == "deleted" else None
+        chat.deleted_at = (
+            datetime.now(timezone.utc) if payload.status == "deleted" else None
+        )
 
     chat.updated_at = datetime.now(timezone.utc)
 
@@ -197,7 +284,9 @@ async def create_chat_message(
     chat = await _get_chat_for_user(db, chat_id, current_user)
 
     if chat.status == "deleted":
-        raise HTTPException(status_code=400, detail="Cannot add messages to a deleted chat")
+        raise HTTPException(
+            status_code=400, detail="Cannot add messages to a deleted chat"
+        )
 
     max_sequence = (
         await db.execute(
@@ -222,12 +311,29 @@ async def create_chat_message(
     db.add(message)
     await db.flush()
 
+    doc_ids = _dedupe_doc_ids(payload.doc_ids)
+    validated_doc_ids = await _validate_doc_ids_for_user(db, current_user, doc_ids)
+    await _replace_message_documents(db, message.message_id, validated_doc_ids)
+
     await _sync_chat_aggregates(db, chat)
 
     await db.commit()
     await db.refresh(message)
 
-    return _message_to_response(message)
+    return ChatMessageResponse(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        role=message.role,
+        sequence=message.sequence,
+        status=message.status,
+        content=message.content,
+        structured_data=message.structured_data,
+        doc_ids=validated_doc_ids,
+        input_tokens=message.input_tokens,
+        output_tokens=message.output_tokens,
+        error=message.error,
+        created_at=message.created_at,
+    )
 
 
 async def list_chat_messages(
@@ -247,8 +353,26 @@ async def list_chat_messages(
         .limit(limit)
     )
     messages = result.scalars().all()
+    message_ids = [message.message_id for message in messages]
+    message_doc_ids = await _get_message_doc_ids(db, message_ids)
 
-    return [_message_to_response(message) for message in messages]
+    return [
+        ChatMessageResponse(
+            message_id=message.message_id,
+            chat_id=message.chat_id,
+            role=message.role,
+            sequence=message.sequence,
+            status=message.status,
+            content=message.content,
+            structured_data=message.structured_data,
+            doc_ids=message_doc_ids.get(message.message_id, []),
+            input_tokens=message.input_tokens,
+            output_tokens=message.output_tokens,
+            error=message.error,
+            created_at=message.created_at,
+        )
+        for message in messages
+    ]
 
 
 async def get_chat_message(
@@ -273,7 +397,22 @@ async def get_chat_message(
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
 
-    return _message_to_response(message)
+    message_doc_ids = await _get_message_doc_ids(db, [message.message_id])
+
+    return ChatMessageResponse(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        role=message.role,
+        sequence=message.sequence,
+        status=message.status,
+        content=message.content,
+        structured_data=message.structured_data,
+        doc_ids=message_doc_ids.get(message.message_id, []),
+        input_tokens=message.input_tokens,
+        output_tokens=message.output_tokens,
+        error=message.error,
+        created_at=message.created_at,
+    )
 
 
 async def update_chat_message(
@@ -302,6 +441,7 @@ async def update_chat_message(
     if (
         payload.content is None
         and payload.structured_data is None
+        and payload.doc_ids is None
         and payload.status is None
         and payload.input_tokens is None
         and payload.output_tokens is None
@@ -313,6 +453,10 @@ async def update_chat_message(
         message.content = payload.content
     if payload.structured_data is not None:
         message.structured_data = payload.structured_data
+    if payload.doc_ids is not None:
+        doc_ids = _dedupe_doc_ids(payload.doc_ids)
+        validated_doc_ids = await _validate_doc_ids_for_user(db, current_user, doc_ids)
+        await _replace_message_documents(db, message.message_id, validated_doc_ids)
     if payload.status is not None:
         message.status = payload.status
     if payload.input_tokens is not None:
@@ -327,7 +471,22 @@ async def update_chat_message(
     await db.commit()
     await db.refresh(message)
 
-    return _message_to_response(message)
+    message_doc_ids = await _get_message_doc_ids(db, [message.message_id])
+
+    return ChatMessageResponse(
+        message_id=message.message_id,
+        chat_id=message.chat_id,
+        role=message.role,
+        sequence=message.sequence,
+        status=message.status,
+        content=message.content,
+        structured_data=message.structured_data,
+        doc_ids=message_doc_ids.get(message.message_id, []),
+        input_tokens=message.input_tokens,
+        output_tokens=message.output_tokens,
+        error=message.error,
+        created_at=message.created_at,
+    )
 
 
 async def delete_chat_message(

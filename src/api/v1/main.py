@@ -1,30 +1,43 @@
-from os import getenv
-import os
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from src.api.v1.routers import auth, embeddings, mcqs, docs, projects, agent, chat
 from contextlib import asynccontextmanager
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-from src.agents.graph import graph_builder  # Import the builder
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
+
+from src.agents.chat_agent import chat_builder
+from src.agents.graph import graph_builder
+from src.api.v1.routers import auth, embeddings, mcqs, docs, projects, agent, chat
+from src.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    conn_str = "postgresql://user:password@db:5432/otis"
+    pool = AsyncConnectionPool(
+        conninfo=settings.checkpoint_db_url,
+        min_size=1,
+        max_size=20,
+        kwargs={
+            "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
+        },
+    )
+    await pool.open()
 
-    async with AsyncPostgresSaver.from_conn_string(conn_str) as checkpointer:
-        await checkpointer.setup()
-        app.state.checkpointer = checkpointer
+    checkpointer = AsyncPostgresSaver(conn=pool)
+    await checkpointer.setup()
 
-        # Compile the graph with checkpointer and store it
-        app.state.compiled_graph = graph_builder.compile(checkpointer=checkpointer)
+    app.state.pool = pool
+    app.state.checkpointer = checkpointer
+    app.state.compiled_graph = graph_builder.compile(checkpointer=checkpointer)
+    app.state.compiled_chat_graph = chat_builder.compile(checkpointer=checkpointer)
 
+    try:
         yield
+    finally:
+        await pool.close()
 
 
 app = FastAPI(
