@@ -87,19 +87,3 @@ export interface MentionPayload {
 
 export type MentionStatus = "idle" | "loading" | "success" | "error";
 
-// ---------------------------------------------------------------------------
-// Mock Data
-// ---------------------------------------------------------------------------
-
-export const MOCK_DOCUMENTS: MentionItem[] = [
-    { id: "doc_001", label: "Project_Specification.pdf" },
-    { id: "doc_002", label: "Meeting_Notes.pdf" },
-    { id: "doc_003", label: "Architecture_Overview.pdf" },
-    { id: "doc_004", label: "API_Documentation.pdf" },
-    { id: "doc_005", label: "User_Flow.pdf" },
-    { id: "doc_006", label: "Product_Requirements.pdf" },
-    { id: "doc_007", label: "Engineering_Guidelines.pdf" },
-    { id: "doc_008", label: "Release_Checklist.pdf" },
-    { id: "doc_009", label: "Integration_Guide.pdf" },
-    { id: "doc_010", label: "Design_System.pdf" },
-];

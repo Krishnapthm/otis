@@ -3,13 +3,13 @@
 // ============================================================================
 
 import type {
-    ActiveTrigger,
-    CaretCoords,
-    MentionItem,
-    MentionPayload,
-    MentionToken,
-    Token,
-    TriggerConfig,
+  ActiveTrigger,
+  CaretCoords,
+  MentionItem,
+  MentionPayload,
+  MentionToken,
+  Token,
+  TriggerConfig,
 } from "./mention-types";
 
 // ---------------------------------------------------------------------------
@@ -23,41 +23,41 @@ const MENTION_REGEX = /\[mention:([^:]+):([^:]+):([^\]]+)\]/g;
  * Parse a wire-format string into a Token array.
  */
 export function parse(wire: string): Token[] {
-    const tokens: Token[] = [];
-    let lastIndex = 0;
+  const tokens: Token[] = [];
+  let lastIndex = 0;
 
-    for (const match of wire.matchAll(MENTION_REGEX)) {
-        const [fullMatch, triggerChar, label, id] = match;
-        const matchStart = match.index!;
+  for (const match of wire.matchAll(MENTION_REGEX)) {
+    const [fullMatch, triggerChar, label, id] = match;
+    const matchStart = match.index!;
 
-        // Text before this mention
-        if (matchStart > lastIndex) {
-            tokens.push({ type: "text", value: wire.slice(lastIndex, matchStart) });
-        }
-
-        tokens.push({ type: "mention", id, label, triggerChar });
-        lastIndex = matchStart + fullMatch.length;
+    // Text before this mention
+    if (matchStart > lastIndex) {
+      tokens.push({ type: "text", value: wire.slice(lastIndex, matchStart) });
     }
 
-    // Remaining text
-    if (lastIndex < wire.length) {
-        tokens.push({ type: "text", value: wire.slice(lastIndex) });
-    }
+    tokens.push({ type: "mention", id, label, triggerChar });
+    lastIndex = matchStart + fullMatch.length;
+  }
 
-    return tokens;
+  // Remaining text
+  if (lastIndex < wire.length) {
+    tokens.push({ type: "text", value: wire.slice(lastIndex) });
+  }
+
+  return tokens;
 }
 
 /**
  * Serialize a Token array back to wire format.
  */
 export function serialize(tokens: Token[]): string {
-    return tokens
-        .map((t) =>
-            t.type === "mention"
-                ? `[mention:${t.triggerChar}:${t.label}:${t.id}]`
-                : t.value
-        )
-        .join("");
+  return tokens
+    .map((t) =>
+      t.type === "mention"
+        ? `[mention:${t.triggerChar}:${t.label}:${t.id}]`
+        : t.value,
+    )
+    .join("");
 }
 
 /**
@@ -65,36 +65,34 @@ export function serialize(tokens: Token[]): string {
  * Mentions appear as "@Label".
  */
 export function toDisplayString(tokens: Token[]): string {
-    return tokens
-        .map((t) =>
-            t.type === "mention" ? `${t.triggerChar}${t.label}` : t.value
-        )
-        .join("");
+  return tokens
+    .map((t) => (t.type === "mention" ? `${t.triggerChar}${t.label}` : t.value))
+    .join("");
 }
 
 /**
  * Get plain text (no mention syntax, no trigger chars).
  */
 export function toPlainText(tokens: Token[]): string {
-    return tokens.map((t) => (t.type === "mention" ? t.label : t.value)).join("");
+  return tokens.map((t) => (t.type === "mention" ? t.label : t.value)).join("");
 }
 
 /**
  * Get structured API payload from tokens.
  */
 export function toApiPayload(tokens: Token[]): MentionPayload {
-    const mentions: MentionPayload["mentions"] = [];
-    const plainText = tokens
-        .map((t) => {
-            if (t.type === "mention") {
-                mentions.push({ id: t.id, label: t.label, triggerChar: t.triggerChar });
-                return t.label;
-            }
-            return t.value;
-        })
-        .join("");
+  const mentions: MentionPayload["mentions"] = [];
+  const plainText = tokens
+    .map((t) => {
+      if (t.type === "mention") {
+        mentions.push({ id: t.id, label: t.label, triggerChar: t.triggerChar });
+        return t.label;
+      }
+      return t.value;
+    })
+    .join("");
 
-    return { plainText, mentions };
+  return { plainText, mentions };
 }
 
 // ---------------------------------------------------------------------------
@@ -109,34 +107,34 @@ export function toApiPayload(tokens: Token[]): MentionPayload {
  * Prevents triggering inside email@example.com.
  */
 export function detectTrigger(
-    value: string,
-    cursorPos: number,
-    triggers: TriggerConfig[]
+  value: string,
+  cursorPos: number,
+  triggers: TriggerConfig[],
 ): ActiveTrigger | null {
-    // Only look at the text before the cursor
-    const textBeforeCursor = value.slice(0, cursorPos);
+  // Only look at the text before the cursor
+  const textBeforeCursor = value.slice(0, cursorPos);
 
-    for (const config of triggers) {
-        const escaped = config.char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        // Match trigger char at start OR after whitespace; capture query after it
-        const pattern = new RegExp(`(?:^|\\s)(${escaped})(\\S*)$`);
-        const match = textBeforeCursor.match(pattern);
+  for (const config of triggers) {
+    const escaped = config.char.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Match trigger char at start OR after whitespace; capture query after it
+    const pattern = new RegExp(`(?:^|\\s)(${escaped})(\\S*)$`);
+    const match = textBeforeCursor.match(pattern);
 
-        if (match) {
-            const triggerChar = match[1];
-            const query = match[2];
-            // Find where in the full string this trigger char actually sits
-            const fullMatchStart = textBeforeCursor.lastIndexOf(triggerChar + query);
+    if (match) {
+      const triggerChar = match[1];
+      const query = match[2];
+      // Find where in the full string this trigger char actually sits
+      const fullMatchStart = textBeforeCursor.lastIndexOf(triggerChar + query);
 
-            return {
-                config,
-                query,
-                triggerStart: fullMatchStart,
-            };
-        }
+      return {
+        config,
+        query,
+        triggerStart: fullMatchStart,
+      };
     }
+  }
 
-    return null;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,10 +145,13 @@ export function detectTrigger(
  * Filter items by query string using case-insensitive substring match.
  * Swap this function for fuzzy search in the future (e.g. fuse.js).
  */
-export function filterItems(items: MentionItem[], query: string): MentionItem[] {
-    if (!query) return items;
-    const lower = query.toLowerCase();
-    return items.filter((item) => item.label.toLowerCase().includes(lower));
+export function filterItems(
+  items: MentionItem[],
+  query: string,
+): MentionItem[] {
+  if (!query) return items;
+  const lower = query.toLowerCase();
+  return items.filter((item) => item.label.toLowerCase().includes(lower));
 }
 
 // ---------------------------------------------------------------------------
@@ -159,27 +160,27 @@ export function filterItems(items: MentionItem[], query: string): MentionItem[] 
 
 // Styles to copy from textarea to the mirror div for accurate measurement
 const MIRROR_STYLE_PROPS: (keyof CSSStyleDeclaration)[] = [
-    "borderTopWidth",
-    "borderRightWidth",
-    "borderBottomWidth",
-    "borderLeftWidth",
-    "paddingTop",
-    "paddingRight",
-    "paddingBottom",
-    "paddingLeft",
-    "fontSize",
-    "fontFamily",
-    "fontWeight",
-    "fontStyle",
-    "lineHeight",
-    "letterSpacing",
-    "textTransform",
-    "wordSpacing",
-    "wordBreak",
-    "wordWrap",
-    "whiteSpace",
-    "tabSize",
-    "boxSizing",
+  "borderTopWidth",
+  "borderRightWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "fontSize",
+  "fontFamily",
+  "fontWeight",
+  "fontStyle",
+  "lineHeight",
+  "letterSpacing",
+  "textTransform",
+  "wordSpacing",
+  "wordBreak",
+  "wordWrap",
+  "whiteSpace",
+  "tabSize",
+  "boxSizing",
 ];
 
 /**
@@ -194,72 +195,75 @@ const MIRROR_STYLE_PROPS: (keyof CSSStyleDeclaration)[] = [
  * 4. Subtracts the textarea's scrollTop so mid-scroll positions are correct.
  */
 export function getCaretCoords(
-    textarea: HTMLTextAreaElement,
-    caretIndex: number
+  textarea: HTMLTextAreaElement,
+  caretIndex: number,
 ): CaretCoords {
-    const textareaRect = textarea.getBoundingClientRect();
-    const computed = window.getComputedStyle(textarea);
+  const textareaRect = textarea.getBoundingClientRect();
+  const computed = window.getComputedStyle(textarea);
 
-    const mirror = document.createElement("div");
-    mirror.setAttribute("aria-hidden", "true");
+  const mirror = document.createElement("div");
+  mirror.setAttribute("aria-hidden", "true");
 
-    const style = mirror.style;
+  const style = mirror.style;
 
-    // Copy every layout-relevant style from the textarea
-    for (const prop of MIRROR_STYLE_PROPS) {
-        style.setProperty(prop as string, computed.getPropertyValue(prop as string));
-    }
+  // Copy every layout-relevant style from the textarea
+  for (const prop of MIRROR_STYLE_PROPS) {
+    style.setProperty(
+      prop as string,
+      computed.getPropertyValue(prop as string),
+    );
+  }
 
-    // ⬇ Position the mirror at exactly the same viewport location as the textarea.
-    // Using position:fixed + the textarea's rect means marker rects come out
-    // as proper viewport coords without any extra offset arithmetic.
-    style.position = "fixed";
-    style.top = `${textareaRect.top}px`;
-    style.left = `${textareaRect.left}px`;
-    style.width = `${textareaRect.width}px`;
-    style.height = `${textareaRect.height}px`;
+  // ⬇ Position the mirror at exactly the same viewport location as the textarea.
+  // Using position:fixed + the textarea's rect means marker rects come out
+  // as proper viewport coords without any extra offset arithmetic.
+  style.position = "fixed";
+  style.top = `${textareaRect.top}px`;
+  style.left = `${textareaRect.left}px`;
+  style.width = `${textareaRect.width}px`;
+  style.height = `${textareaRect.height}px`;
 
-    // Clip to the visible area of the textarea (respect its scroll)
-    style.overflow = "hidden";
-    style.whiteSpace = "pre-wrap";
-    style.wordWrap = "break-word";
-    style.visibility = "hidden";
-    style.pointerEvents = "none";
-    // zIndex irrelevant since visibility:hidden, but keep it out of the way
-    style.zIndex = "-9999";
+  // Clip to the visible area of the textarea (respect its scroll)
+  style.overflow = "hidden";
+  style.whiteSpace = "pre-wrap";
+  style.wordWrap = "break-word";
+  style.visibility = "hidden";
+  style.pointerEvents = "none";
+  // zIndex irrelevant since visibility:hidden, but keep it out of the way
+  style.zIndex = "-9999";
 
-    // Text before the caret — we replicate the textarea's scrollTop so the
-    // marker ends up at the right visual line even when the textarea is scrolled.
-    const textBeforeCaret = textarea.value.slice(0, caretIndex);
+  // Text before the caret — we replicate the textarea's scrollTop so the
+  // marker ends up at the right visual line even when the textarea is scrolled.
+  const textBeforeCaret = textarea.value.slice(0, caretIndex);
 
-    const escaped = textBeforeCaret
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/\n/g, "<br>");
+  const escaped = textBeforeCaret
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
 
-    // Zero-width space inside the marker so it has measurable dimensions
-    mirror.innerHTML = `${escaped}<span id="__mention_caret_marker__">\u200B</span>`;
+  // Zero-width space inside the marker so it has measurable dimensions
+  mirror.innerHTML = `${escaped}<span id="__mention_caret_marker__">\u200B</span>`;
 
-    document.body.appendChild(mirror);
+  document.body.appendChild(mirror);
 
-    // Shift the mirror's text up by the textarea's scroll amount so the marker
-    // lands on the correct visual line
-    mirror.scrollTop = textarea.scrollTop;
+  // Shift the mirror's text up by the textarea's scroll amount so the marker
+  // lands on the correct visual line
+  mirror.scrollTop = textarea.scrollTop;
 
-    const marker = mirror.querySelector(
-        "#__mention_caret_marker__"
-    ) as HTMLElement;
-    const markerRect = marker.getBoundingClientRect();
-    const lineHeightValue = parseFloat(computed.lineHeight) || 20;
+  const marker = mirror.querySelector(
+    "#__mention_caret_marker__",
+  ) as HTMLElement;
+  const markerRect = marker.getBoundingClientRect();
+  const lineHeightValue = parseFloat(computed.lineHeight) || 20;
 
-    document.body.removeChild(mirror);
+  document.body.removeChild(mirror);
 
-    return {
-        x: markerRect.left,
-        y: markerRect.top,
-        lineHeight: lineHeightValue,
-    };
+  return {
+    x: markerRect.left,
+    y: markerRect.top,
+    lineHeight: lineHeightValue,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -272,18 +276,18 @@ export function getCaretCoords(
  * plus the cursor position after the inserted mention + trailing space.
  */
 export function buildInsertedDisplayValue(
-    displayValue: string,
-    triggerStart: number,
-    cursorPos: number,
-    mention: MentionToken
+  displayValue: string,
+  triggerStart: number,
+  cursorPos: number,
+  mention: MentionToken,
 ): { newValue: string; newCursorPos: number } {
-    const insertion = `${mention.triggerChar}${mention.label} `;
-    const newValue =
-        displayValue.slice(0, triggerStart) +
-        insertion +
-        displayValue.slice(cursorPos);
-    const newCursorPos = triggerStart + insertion.length;
-    return { newValue, newCursorPos };
+  const insertion = `${mention.triggerChar}${mention.label} `;
+  const newValue =
+    displayValue.slice(0, triggerStart) +
+    insertion +
+    displayValue.slice(cursorPos);
+  const newCursorPos = triggerStart + insertion.length;
+  return { newValue, newCursorPos };
 }
 
 /**
@@ -295,23 +299,137 @@ export function buildInsertedDisplayValue(
  * (i.e. it's an inserted mention label, not partial typed text).
  */
 export function getMentionRangeBeforeCursor(
-    displayValue: string,
-    cursorPos: number,
-    tokens: Token[]
+  cursorPos: number,
+  tokens: Token[],
 ): { start: number; end: number } | null {
-    // Rebuild display positions for each token
-    let pos = 0;
-    for (const token of tokens) {
-        const display =
-            token.type === "mention"
-                ? `${token.triggerChar}${token.label} `
-                : token.value;
-        const end = pos + display.length;
+  // Rebuild display positions for each token
+  let pos = 0;
+  for (const token of tokens) {
+    const display =
+      token.type === "mention"
+        ? `${token.triggerChar}${token.label} `
+        : token.value;
+    const end = pos + display.length;
 
-        if (token.type === "mention" && cursorPos === end) {
-            return { start: pos, end };
-        }
-        pos = end;
+    if (token.type === "mention" && cursorPos === end) {
+      return { start: pos, end };
     }
-    return null;
+    pos = end;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// ContentEditable helpers
+// ---------------------------------------------------------------------------
+
+function locateTextNodeAtOffset(root: HTMLElement, offset: number) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let current = walker.nextNode();
+  let consumed = 0;
+
+  while (current) {
+    const textNode = current as Text;
+    const length = textNode.nodeValue?.length ?? 0;
+    const end = consumed + length;
+
+    if (offset <= end) {
+      return {
+        node: textNode,
+        offset: Math.max(0, Math.min(length, offset - consumed)),
+      };
+    }
+
+    consumed = end;
+    current = walker.nextNode();
+  }
+
+  if (root.lastChild && root.lastChild.nodeType === Node.TEXT_NODE) {
+    const textNode = root.lastChild as Text;
+    const length = textNode.nodeValue?.length ?? 0;
+    return { node: textNode, offset: length };
+  }
+
+  const trailing = document.createTextNode("");
+  root.appendChild(trailing);
+  return { node: trailing, offset: 0 };
+}
+
+export function getContentEditableText(element: HTMLDivElement): string {
+  return element.textContent?.replace(/\u00A0/g, " ") ?? "";
+}
+
+export function getContentEditableSelectionRange(element: HTMLDivElement): {
+  start: number;
+  end: number;
+} {
+  const selection = window.getSelection();
+  const fallback = getContentEditableText(element).length;
+
+  if (!selection || selection.rangeCount === 0) {
+    return { start: fallback, end: fallback };
+  }
+
+  const range = selection.getRangeAt(0);
+  if (
+    !element.contains(range.startContainer) ||
+    !element.contains(range.endContainer)
+  ) {
+    return { start: fallback, end: fallback };
+  }
+
+  const startRange = document.createRange();
+  startRange.selectNodeContents(element);
+  startRange.setEnd(range.startContainer, range.startOffset);
+  const start = startRange.toString().length;
+
+  const endRange = document.createRange();
+  endRange.selectNodeContents(element);
+  endRange.setEnd(range.endContainer, range.endOffset);
+  const end = endRange.toString().length;
+
+  return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
+export function setContentEditableSelectionRange(
+  element: HTMLDivElement,
+  start: number,
+  end: number,
+) {
+  const textLength = getContentEditableText(element).length;
+  const safeStart = Math.max(0, Math.min(start, textLength));
+  const safeEnd = Math.max(0, Math.min(end, textLength));
+
+  const startPoint = locateTextNodeAtOffset(element, safeStart);
+  const endPoint = locateTextNodeAtOffset(element, safeEnd);
+
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const range = document.createRange();
+  range.setStart(startPoint.node, startPoint.offset);
+  range.setEnd(endPoint.node, endPoint.offset);
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+export function getCaretCoordsFromContentEditable(
+  element: HTMLDivElement,
+  caretIndex: number,
+): CaretCoords {
+  const point = locateTextNodeAtOffset(element, Math.max(0, caretIndex));
+  const range = document.createRange();
+  range.setStart(point.node, point.offset);
+  range.collapse(true);
+
+  const rect = range.getBoundingClientRect();
+  const fallbackRect = element.getBoundingClientRect();
+  const computed = window.getComputedStyle(element);
+
+  return {
+    x: rect.left || fallbackRect.left,
+    y: rect.top || fallbackRect.top,
+    lineHeight: parseFloat(computed.lineHeight) || 20,
+  };
 }

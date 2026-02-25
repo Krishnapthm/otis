@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Empty } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,8 +15,6 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Upload, Grid3x3, List } from "lucide-react";
 import {
-  getAllUserDocuments,
-  deleteDocumentsFromProject,
   downloadDocument,
   type Document,
 } from "@/api/docApi";
@@ -27,29 +25,30 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
-import { uploadUserDocuments } from "@/api/docApi";
 import { DocumentGrid } from "@/components/features/documents/document-grid";
 import { SearchInput } from "@/components/ui/search-input";
 import { DownloadButton } from "@/components/ui/download-button";
 import ScrollingFilename from "@/components/features/documents/ScrollingFileName";
+import { useDocuments } from "@/hooks/useDocuments";
+import { useUploadDocument } from "@/hooks/useUploadDocument";
+import { useDeleteDocuments } from "@/hooks/useDeleteDocuments";
 
 export default function DataLibrary() {
-  // Data State
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
+  // Server State (TanStack Query)
+  const { documents, isLoading } = useDocuments();
+  const { uploadDocuments, isUploading } = useUploadDocument();
+  const { deleteDocuments, isDeleting } = useDeleteDocuments();
 
   // UI State
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
 
   // Delete Dialog State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [docsToDelete, setDocsToDelete] = useState<Document[]>([]);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Duplicate Alert State
   const [duplicateFiles, setDuplicateFiles] = useState<string[]>([]);
@@ -62,24 +61,6 @@ export default function DataLibrary() {
   const filteredDocuments = documents.filter((doc) =>
     doc.filename.toLowerCase().includes(searchQuery.toLowerCase()),
   );
-
-  // --- Data Loading ---
-  const loadDocuments = async () => {
-    setIsLoading(true);
-    try {
-      const docs = await getAllUserDocuments();
-      setDocuments(docs);
-    } catch (error) {
-      toast.error("Failed to load documents");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // --- Effects ---
-  useEffect(() => {
-    loadDocuments();
-  }, []);
 
   // --- Selection Logic ---
   const handleSelect = (docId: string, checked: boolean) => {
@@ -121,11 +102,8 @@ export default function DataLibrary() {
   const handleUpload = async (files: File[]) => {
     if (files.length === 0) return;
 
-    setIsUploading(true);
-
     try {
-      const uploadedDocs = await uploadUserDocuments(files);
-      setDocuments((prev) => [...uploadedDocs, ...prev]);
+      const uploadedDocs = await uploadDocuments(files);
       toast.success(`Uploaded ${uploadedDocs.length} file(s) successfully`);
 
       // Clear file input
@@ -146,8 +124,6 @@ export default function DataLibrary() {
           description: error?.response?.data?.detail || "An error occurred",
         });
       }
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -186,17 +162,14 @@ export default function DataLibrary() {
   };
 
   const executeDelete = async () => {
-    setIsDeleting(true);
     const docIds = docsToDelete.map((d) => d.doc_id);
 
     try {
-      // This needs to be updated to use user-level delete when available
-      // For now using project delete
-      await deleteDocumentsFromProject(docsToDelete[0].project_id, docIds);
+      await deleteDocuments({
+        projectId: docsToDelete[0].project_id,
+        docIds,
+      });
 
-      setDocuments((prev) =>
-        prev.filter((doc) => !docIds.includes(doc.doc_id)),
-      );
       setSelectedDocs((prev) => {
         const newSet = new Set(prev);
         docIds.forEach((id) => newSet.delete(id));
@@ -208,8 +181,6 @@ export default function DataLibrary() {
       toast.success(`${docIds.length} document(s) deleted successfully`);
     } catch (error) {
       toast.error("Failed to delete documents");
-    } finally {
-      setIsDeleting(false);
     }
   };
 

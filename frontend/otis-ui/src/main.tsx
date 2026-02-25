@@ -2,12 +2,16 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { LoginForm } from "./components/features/auth/login-form.tsx";
 import { SignupForm } from "./components/features/auth/signup-form.tsx";
 import { RequireAuth } from "./components/features/auth/requireAuth.tsx";
 import { ThemeProvider } from "next-themes";
 import App from "./App.tsx";
 import { AuthProvider } from "@/authContext.tsx";
+
+const queryClient = new QueryClient();
 import Dashboard from "./components/features/dashboard/dashboard.tsx";
 import ChatPage from "./components/features/chat/chat-page.tsx";
 import Projects from "./components/features/projects/projects.tsx";
@@ -119,14 +123,17 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider
       attribute="class"
-      defaultTheme="light"
+      defaultTheme="dark"
       enableSystem
       disableTransitionOnChange
     >
       <AuthProvider>
-        <div className="h-screen w-screen overflow-hidden">
-          <RouterProvider router={router} />
-        </div>
+        <QueryClientProvider client={queryClient}>
+          <div className="h-screen w-screen overflow-hidden">
+            <RouterProvider router={router} />
+          </div>
+          <ReactQueryDevtools initialIsOpen={false} />
+        </QueryClientProvider>
       </AuthProvider>
     </ThemeProvider>
   </StrictMode>,
