@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   GlobeIcon,
@@ -114,6 +114,7 @@ function resolveDocIdsFromNames(
 
 export default function ChatPage() {
   const { chatId } = useParams<{ chatId?: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
@@ -228,7 +229,20 @@ export default function ChatPage() {
       const text = message.text ?? "";
       if (!text.trim()) return;
 
+      let resolvedChatId = chatId;
+      if (!resolvedChatId) {
+        const created = await chatApi.create({
+          title: text.slice(0, 80),
+        });
+        resolvedChatId = created.chat_id;
+        loadedChatId.current = resolvedChatId;
+        navigate(`/c/${resolvedChatId}`);
+      }
+
       const mentionPayload = picker.getApiPayload();
+      const mentionIds = mentionPayload.mentions
+        .map((mention) => mention.id?.trim())
+        .filter((value): value is string => Boolean(value));
       const mentionNames = mentionPayload.mentions.map(
         (mention) => mention.label,
       );
@@ -238,12 +252,17 @@ export default function ChatPage() {
         queryClient.getQueryData<Document[]>(queryKeys.documents.all) ??
         documents;
 
-      let { docIds, unresolvedNames } = resolveDocIdsFromNames(
-        mentionNames,
-        docsForResolution,
-      );
+      let docIds = [...new Set(mentionIds)];
+      let unresolvedNames: string[] = [];
 
-      if (unresolvedNames.length > 0) {
+      if (docIds.length === 0 && mentionNames.length > 0) {
+        ({ docIds, unresolvedNames } = resolveDocIdsFromNames(
+          mentionNames,
+          docsForResolution,
+        ));
+      }
+
+      if (docIds.length === 0 && unresolvedNames.length > 0) {
         docsForResolution = await queryClient.fetchQuery({
           queryKey: queryKeys.documents.all,
           queryFn: getAllUserDocuments,
@@ -263,6 +282,7 @@ export default function ChatPage() {
       const payload = {
         message: tokenizedText,
         doc_ids: docIds,
+        mentions: mentionPayload.mentions,
       };
 
       console.log("Resolved chat payload", payload);
@@ -274,13 +294,64 @@ export default function ChatPage() {
         content: tokenizedText,
         createdAt: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, optimisticUserMsg]);
+      const optimisticAssistantId = `optimistic-assistant-${Date.now()}`;
+      const optimisticAssistantMsg: ChatMessageType = {
+        id: optimisticAssistantId,
+        role: "assistant",
+        content: "",
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [
+        ...prev,
+        optimisticUserMsg,
+        optimisticAssistantMsg,
+      ]);
       picker.reset();
 
-      // TEMPORARY: chat backend invoke call disabled while validating mention resolution payload.
-      // chatApi.messages.stream(resolvedChatId, payload.message, handlers, payload.doc_ids)
+      try {
+        await chatApi.messages.stream(
+          resolvedChatId,
+          payload.message,
+          {
+            onToken: (chunk) => {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === optimisticAssistantId
+                    ? { ...msg, content: `${msg.content}${chunk}` }
+                    : msg,
+                ),
+              );
+            },
+            onDone: (assistantMessage) => {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === optimisticAssistantId
+                    ? apiMessageToLocal(assistantMessage)
+                    : msg,
+                ),
+              );
+            },
+            onError: (error) => {
+              toast.error(error || "Chat stream failed");
+              setMessages((prev) =>
+                prev.filter((msg) => msg.id !== optimisticAssistantId),
+              );
+            },
+          },
+          payload.doc_ids,
+          payload.mentions,
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Chat invoke failed",
+        );
+        setMessages((prev) =>
+          prev.filter((msg) => msg.id !== optimisticAssistantId),
+        );
+      }
     },
-    [documents, picker, queryClient],
+    [chatId, documents, navigate, picker, queryClient],
   );
 
   return (

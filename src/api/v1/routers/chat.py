@@ -1,9 +1,12 @@
 from typing import List
 import uuid
 import json
+import os
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from langchain_ollama import OllamaEmbeddings
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.crud import (
@@ -30,6 +33,11 @@ from src.api.db.schema import (
     ChatUpdate,
 )
 from src.core.security import get_current_user
+from src.core.config import settings
+from src.services.retrieval_service import (
+    retrieve_with_concepts,
+    format_retrieved_context,
+)
 
 
 router = APIRouter(prefix="/chats")
@@ -274,7 +282,50 @@ async def invoke_chat_endpoint(
     )
 
     config = {"configurable": {"thread_id": str(chat_id)}}
-    input_state = {"chat_messages": [{"role": "user", "content": message_text}]}
+    input_state = {
+        "chat_messages": [{"role": "user", "content": message_text}],
+        "user_prompt": message_text,
+        "doc_ids": payload.doc_ids or [],
+        "user_id": str(current_user.user_id),
+        "use_naive_generator": settings.use_naive_mcq_generator,
+    }
+
+    # --- Concept-aware retrieval (when documents are mentioned) ---
+    # If the user attached doc_ids (via mention picker), run two-layer retrieval
+    # and inject the retrieved context as a system message.
+    if payload.doc_ids and settings.chat_router_retrieval_fallback:
+        try:
+            _embeddings = OllamaEmbeddings(
+                model="nomic-embed-text",
+                base_url=os.getenv("OLLAMA_BASE_URL", "http://ollama:11434"),
+            )
+            retrieved_docs = await retrieve_with_concepts(
+                query=message_text,
+                doc_ids=payload.doc_ids,
+                user_id=str(current_user.user_id),
+                db=db,
+                embedding_model=_embeddings,
+            )
+            context_text = format_retrieved_context(retrieved_docs)
+            if context_text:
+                input_state["chat_messages"].insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": (
+                            "Use the following document context to answer the "
+                            "user's question. If the context doesn't contain "
+                            "relevant information, say so.\n\n"
+                            f"{context_text}"
+                        ),
+                    },
+                )
+        except Exception as retrieval_err:
+            logging.getLogger(__name__).warning(
+                "Retrieval failed for chat %s, proceeding without context: %s",
+                chat_id,
+                retrieval_err,
+            )
 
     async def stream():
         yield (

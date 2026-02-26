@@ -58,6 +58,29 @@ class BeforeAgentGuardrail(BaseModel):
     intent: Literal["ALLOW", "BLOCK"]
 
 
+class RetrievedChunk(TypedDict):
+    chunk_id: str
+    doc_id: str
+    content: str
+    score: float
+    metadata: dict
+
+
+# ---Plan state---#
+
+
+class TestGenerationPlan(BaseModel):
+    difficulty: Literal["EASY", "MEDIUM", "HARD"]
+    num_questions: int
+    blooms_level: Literal[
+        "REMEMBER", "UNDERSTAND", "APPLY", "ANALYZE", "EVALUATE", "CREATE"
+    ]
+    stem_guidance: str
+    distractor_strategy: str
+    retrieval_queries: List[str]
+    concepts: List[Concept]
+
+
 class State(TypedDict, total=False):
     """
     State
@@ -65,3 +88,9 @@ class State(TypedDict, total=False):
 
     intent: BeforeAgentGuardrail
     chat_messages: Annotated[List[ChatMessage], add] = None
+    user_prompt: str
+    doc_ids: List[uuid.UUID]
+    user_id: str
+    search_queries: List[str]
+    retrieved_chunks: List[RetrievedChunk]
+    use_naive_generator: bool

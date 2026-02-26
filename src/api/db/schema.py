@@ -203,12 +203,34 @@ class StartGraphRequest(BaseModel):
     """Updated: Uses user's collection instead of project-specific collection"""
 
     doc_ids: List[uuid.UUID]
+    user_prompt: Optional[str] = None
     # collection_id is now derived from user's vectorstore, not passed
 
 
 class Concept(BaseModel):
     name: str = Field(description="Concept Name")
     summary: str = Field(description="Concept Summary")
+
+
+class DocumentConceptResponse(BaseModel):
+    """Response schema for a pre-extracted document concept."""
+
+    concept_id: UUID4
+    document_id: UUID4
+    concept_name: str
+    concept_summary: str
+    extractor_version: str = "v1"
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConceptMatchResult(BaseModel):
+    """Result from Layer-1 concept matching during retrieval."""
+
+    concept_name: str
+    concept_summary: str
+    score: float = Field(description="Cosine similarity score (0-1)")
 
 
 class ResumeRequest(BaseModel):
@@ -285,3 +307,4 @@ class ChatMessageResponse(BaseModel):
 class ChatInvokeRequest(BaseModel):
     message: str
     doc_ids: Optional[List[uuid.UUID]] = None
+    mentions: Optional[List[dict]] = None

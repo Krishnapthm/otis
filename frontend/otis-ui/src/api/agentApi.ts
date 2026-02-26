@@ -37,6 +37,7 @@ export interface AgentEvent {
 
 export interface StartGraphRequest {
   doc_ids: string[];
+  user_prompt?: string;
 }
 
 export interface ResumeRequest {
@@ -62,6 +63,7 @@ function getAuthToken(): string | null {
  */
 export async function startGraphStream(
   docIds: string[],
+  userPrompt: string | undefined,
   onEvent: (event: AgentEvent) => void,
   onError: (error: string) => void,
   onComplete: () => void,
@@ -76,7 +78,7 @@ export async function startGraphStream(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ doc_ids: docIds }),
+    body: JSON.stringify({ doc_ids: docIds, user_prompt: userPrompt }),
   });
 
   if (!response.ok) {

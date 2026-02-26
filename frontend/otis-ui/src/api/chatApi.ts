@@ -202,6 +202,7 @@ export const chatApi = {
         onError: (error: string) => void;
       },
       docIds?: string[],
+      mentions?: { id: string; label: string; triggerChar: string }[],
     ): Promise<{ close: () => void }> => {
       const token = localStorage.getItem("access_token");
       const baseURL = (api.defaults.baseURL ?? "").replace(/\/$/, "");
@@ -212,7 +213,7 @@ export const chatApi = {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ message, doc_ids: docIds }),
+        body: JSON.stringify({ message, doc_ids: docIds, mentions }),
       });
 
       if (!response.ok) {

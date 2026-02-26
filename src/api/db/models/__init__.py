@@ -102,6 +102,9 @@ class Documents(Base):
     chat_message_documents: Mapped[List["ChatMessageDocuments"]] = relationship(
         "ChatMessageDocuments", back_populates="doc"
     )
+    concepts: Mapped[List["DocumentConcept"]] = relationship(
+        "DocumentConcept", back_populates="document", cascade="all, delete-orphan"
+    )
 
 
 class LangchainPgCollection(Base):
@@ -441,3 +444,42 @@ class MCQCache(Base):
     expires_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=text("now() + interval '90 days'")
     )
+
+
+class DocumentConcept(Base):
+    """
+    Pre-extracted concept for a document.
+
+    Populated at embedding time via a cheap LLM (gpt-4.1-nano).
+    Each row stores a concept name, summary, and its vector embedding.
+    Used as the first layer in two-layer retrieval:
+      Layer 1 — cosine-similarity on concept_embedding narrows scope.
+      Layer 2 — PGVector chunk retrieval filtered by matched concepts.
+
+    See: migrations/002_document_concepts.sql
+    """
+
+    __tablename__ = "document_concepts"
+    __table_args__ = (
+        UniqueConstraint("document_id", "concept_name", name="uq_document_concept"),
+        Index("idx_document_concepts_doc_id", "document_id"),
+    )
+
+    concept_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("documents.doc_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    concept_name: Mapped[str] = mapped_column(Text, nullable=False)
+    concept_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    concept_embedding: Mapped[Optional[Any]] = mapped_column(VECTOR(768))
+    extractor_version: Mapped[str] = mapped_column(Text, server_default=text("'v1'"))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=text("now()")
+    )
+
+    # Relationships
+    document: Mapped["Documents"] = relationship("Documents", back_populates="concepts")

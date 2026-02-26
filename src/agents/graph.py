@@ -1,3 +1,21 @@
+"""
+DEPRECATED — Agent Graph (RAG / Concept Extraction flow)
+=========================================================
+
+This module implements the original agentic RAG pipeline:
+
+    START → fetch_documents → generate_summaries → human_approval
+          → generate_search_queries → retrieve_context → END
+
+**Status: DEPRECATED.**  Concept extraction has been moved to upload time
+(see ``src/services/concept_service.py``), and document retrieval is now
+handled by the two-layer retrieval service wired into the chat invoke
+endpoint (see ``src/services/retrieval_service.py``).
+
+This file is kept for reference and will be removed in a future cleanup.
+Use ``src/agents/chat_agent.py`` instead.
+"""
+
 from langchain_openai import AzureChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
@@ -6,7 +24,13 @@ from src.agents.utils.state import AgentState
 
 
 def create_agent_builder() -> StateGraph:
-    """Returns the uncompiled graph builder"""
+    """Returns the uncompiled graph builder.
+
+    .. deprecated::
+        This graph is superseded by the chat agent
+        (``src/agents/chat_agent.py``) combined with the two-layer
+        retrieval service (``src/services/retrieval_service.py``).
+    """
 
     llm = AzureChatOpenAI(
         azure_deployment="gpt-4o-mini",

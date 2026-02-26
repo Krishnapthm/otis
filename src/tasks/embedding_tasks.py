@@ -28,6 +28,14 @@ from sqlalchemy.orm import Session
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from src.api.db.models import Documents, LangchainPgCollection, UserVectorstore
+from src.services.concept_service import (
+    extract_concepts,
+    store_concepts,
+)
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Document processing configuration
@@ -58,14 +66,14 @@ def process_user_embeddings(
 ):
     """
     Process embeddings for a user's vectorstore.
-    
+
     Idempotent behavior:
     - Only processes documents with provided IDs
     - Marks each document as is_embedded=True after successful processing
     - Updates document_count in UserVectorstore
     - If called again with same documents, they won't be re-processed
       (because is_embedded=True filter happens at CRUD level)
-    
+
     Args:
         user_id: The user's UUID as string
         collection_name: Collection name (format: user_{user_id})
@@ -76,7 +84,7 @@ def process_user_embeddings(
     db_url = os.getenv("DATABASE_URL", "")
     # Convert async URL to sync: replace asyncpg/psycopg with psycopg2
     sync_db_url = db_url.replace("+asyncpg", "").replace("+psycopg", "")
-    
+
     engine = create_engine(sync_db_url)
     db = Session(engine)
 
@@ -127,6 +135,7 @@ def process_user_embeddings(
 
                 # Compute content hash using normalized text
                 from src.core.hashing import compute_content_hash
+
                 content_hash = compute_content_hash(md)
 
                 # Store markdown content and content_hash
@@ -151,12 +160,20 @@ def process_user_embeddings(
                     document.status = "ready"
                     document.is_embedded = True  # Inherits canonical's embeddings
                     db.commit()
-                    print(f"Doc {doc_id} linked to canonical {canonical.doc_id} (same content)")
+                    print(
+                        f"Doc {doc_id} linked to canonical {canonical.doc_id} (same content)"
+                    )
                     continue
 
                 # New content - mark as processing
                 document.status = "processing"
                 db.commit()
+
+                # --- Concept extraction (non-fatal) ---
+                # Extract concepts from the full markdown using a cheap LLM.
+                # This happens before chunking so we have the concept list
+                # available to tag each chunk.
+                doc_concepts = extract_concepts(md, doc_name=Path(file_path).name)
 
                 # Split into chunks
                 header_docs = markdown_splitter.split_text(md)
@@ -188,6 +205,12 @@ def process_user_embeddings(
                                 },
                             )
                         )
+
+                # Stash concepts per doc_id for post-embedding storage
+                if not hasattr(process_user_embeddings, "_concept_buffer"):
+                    process_user_embeddings._concept_buffer = {}
+                if doc_concepts:
+                    process_user_embeddings._concept_buffer[doc_id] = doc_concepts
 
                 processed_doc_ids.append(doc_id)
 
@@ -226,6 +249,27 @@ def process_user_embeddings(
 
         # Add documents to vector store
         vector_store.add_documents(documents=docling_docs)
+
+        # --- Store concept embeddings (non-fatal) ---
+        # Persist concepts with their vector embeddings into document_concepts.
+        # Uses the same embedding model instance as chunk embeddings.
+        concept_buffer = getattr(process_user_embeddings, "_concept_buffer", {})
+        for doc_id_str in processed_doc_ids:
+            if doc_id_str in concept_buffer:
+                try:
+                    store_concepts(
+                        document_id=uuid.UUID(doc_id_str),
+                        concepts=concept_buffer[doc_id_str],
+                        embedding_model=embeddings,
+                        db=db,
+                    )
+                except Exception as ce:
+                    logger.warning(
+                        "Failed to store concepts for %s: %s", doc_id_str, ce
+                    )
+        # Clean up buffer
+        if hasattr(process_user_embeddings, "_concept_buffer"):
+            del process_user_embeddings._concept_buffer
 
         # Get collection ID
         collection = (

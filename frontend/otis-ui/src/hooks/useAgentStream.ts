@@ -29,7 +29,7 @@ export interface AgentStreamState {
 }
 
 export interface UseAgentStreamReturn extends AgentStreamState {
-  startStream: (docIds: string[]) => Promise<void>;
+  startStream: (docIds: string[], userPrompt?: string) => Promise<void>;
   resumeWithConcepts: (selectedConcepts: Concept[]) => Promise<void>;
   reset: () => void;
 }
@@ -108,7 +108,7 @@ export function useAgentStream(): UseAgentStreamReturn {
   }, []);
 
   const startStream = useCallback(
-    async (docIds: string[]) => {
+    async (docIds: string[], userPrompt?: string) => {
       // Clean up any existing stream
       if (closeRef.current) {
         closeRef.current();
@@ -124,6 +124,7 @@ export function useAgentStream(): UseAgentStreamReturn {
       try {
         const { close, threadIdPromise } = await startGraphStream(
           docIds,
+          userPrompt,
           handleEvent,
           handleError,
           handleComplete,

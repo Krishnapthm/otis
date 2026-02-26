@@ -43,26 +43,31 @@ async def start_graph(
 ):
     """
     Start the graph with the user's vectorstore.
-    
+
     Collection is automatically derived from user's vectorstore.
     No need to pass collection_id in request.
     """
     # Get user's vectorstore
     vectorstore = await get_or_create_vectorstore(current_user.user_id, db)
-    
+
     # Derive collection name from user_id
     collection_name = f"user_{current_user.user_id}"
-    
+
     # Check if vectorstore is ready
     if vectorstore.status != "ready":
         raise HTTPException(
             status_code=400,
-            detail=f"Vectorstore is not ready. Current status: {vectorstore.status}. Please sync embeddings first."
+            detail=f"Vectorstore is not ready. Current status: {vectorstore.status}. Please sync embeddings first.",
         )
-    
+
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
-    input_state = {"doc_ids": req.doc_ids, "collection_name": collection_name}
+    input_state = {
+        "doc_ids": req.doc_ids,
+        "collection_name": collection_name,
+        "user_id": str(current_user.user_id),
+        "user_prompt": req.user_prompt or "Generate MCQs from selected documents",
+    }
 
     async def stream():
         async for mode, payload in graph.astream(

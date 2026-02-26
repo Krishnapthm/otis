@@ -51,7 +51,10 @@ export function GenerateTab({
   const handleStartExtraction = async () => {
     if (selectedDocIds.length === 0) return;
     setSelectedConcepts([]);
-    await startStream(selectedDocIds);
+    await startStream(
+      selectedDocIds,
+      "Generate multiple-choice questions from the selected documents.",
+    );
   };
 
   const handleContinue = async () => {
