@@ -1,6 +1,5 @@
-from typing import Annotated, List, Literal, Optional, Type
+from typing import Annotated, List, Literal, Optional
 import uuid
-from langchain_postgres import chat_message_histories
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 from operator import add
@@ -70,6 +69,7 @@ class RetrievedChunk(TypedDict):
 
 
 class TestGenerationPlan(BaseModel):
+    topic: str
     difficulty: Literal["EASY", "MEDIUM", "HARD"]
     num_questions: int
     blooms_level: Literal[
@@ -81,16 +81,105 @@ class TestGenerationPlan(BaseModel):
     concepts: List[Concept]
 
 
+class MCQDraft(BaseModel):
+    question_index: int = Field(default=0)
+    stem: Optional[str]
+    options: Optional[List[str]]
+    distractors: Optional[List[str]]
+    answer: Optional[str]
+    explanation: str = ""
+    validation_score: Optional[float] = None
+    validation_feedback: Optional[str] = None
+
+
+class MCQQuestion(BaseModel):
+    question_index: int
+    question: str
+
+
+class MCQOption(BaseModel):
+    key: Literal["A", "B", "C", "D"]
+    text: str
+
+
+class FinalMCQ(BaseModel):
+    question_index: int
+    question: str
+    options: List[MCQOption]
+    right_answer: Literal["A", "B", "C", "D"]
+    explanation: str
+
+
+class ValidationResult(BaseModel):
+    validation_passed: bool
+    validation_feedback: str = ""
+    validation_score: Optional[float] = None
+
+
+class RetrievalStatus(BaseModel):
+    status: Literal["pending", "done", "failed"] = "pending"
+    error: Optional[str] = None
+
+
+class QuestionSubgraphState(TypedDict, total=False):
+    plan: TestGenerationPlan
+    question_index: int
+    retrieved_chunks: List[RetrievedChunk]
+    existing_draft: Optional[MCQDraft]
+    stem: Optional[str]
+    options: Optional[List[str]]
+    correct_answer: Optional[str]
+    distractors: Optional[List[str]]
+    explanation: Optional[str]
+    retry_count: int
+    validation_passed: bool
+    validation_feedback: str
+    draft: Optional[MCQDraft]
+
+
+class IntentClassification(BaseModel):
+    intent: Literal[
+        "followup", "mcq_request", "utility_task", "clarification", "BLOCKED"
+    ]
+
+
 class State(TypedDict, total=False):
     """
     State
     """
 
-    intent: BeforeAgentGuardrail
+    # guardrails
+    before_agent_guardrail: BeforeAgentGuardrail
+    intent: IntentClassification
+
+    # conversation
     messages: Annotated[List[ChatMessage], add] = None
     user_prompt: str
-    doc_ids: List[uuid.UUID]
     user_id: str
+    doc_ids: List[uuid.UUID]
+
     search_queries: List[str]
     retrieved_chunks: List[RetrievedChunk]
+    retrieval_status: RetrievalStatus
     use_naive_generator: bool
+    plan: TestGenerationPlan
+    plan_version: int
+    retry_count: int
+    max_retries: int
+    validation_feedback: str
+
+    mcq_question_prompts: List[str]
+    mcq_drafts: Annotated[List[MCQDraft], add]
+    final_mcqs: List[FinalMCQ]
+
+    edit_mode: bool
+    edit_target: Literal["all", "specific"]
+    edit_indices: List[int]
+    edit_strategy: Literal["regenerate", "patch"]
+    existing_drafts: List[MCQDraft]
+
+    artifact_version: int
+    retrieval_signature: Optional[str]
+    retrieval_signature_valid: bool
+    artifact_bump: bool
+    tool_result: str

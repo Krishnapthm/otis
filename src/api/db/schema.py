@@ -340,3 +340,7 @@ class ChatInvokeRequest(BaseModel):
     message: str
     doc_ids: Optional[List[uuid.UUID]] = None
     mentions: Optional[List[dict]] = None
+    edit_mode: bool = False
+    edit_target: Literal["all", "specific"] = "all"
+    edit_indices: List[int] = Field(default_factory=list)
+    edit_strategy: Literal["regenerate", "patch"] = "regenerate"

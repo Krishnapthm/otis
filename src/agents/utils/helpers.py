@@ -12,7 +12,7 @@ def resolve_user_prompt(state: State) -> str:
     if state.get("user_prompt"):
         return state["user_prompt"]
 
-    chat_messages = state.get("chat_messages") or []
+    chat_messages = state.get("messages") or state.get("chat_messages") or []
     if not chat_messages:
         return ""
 

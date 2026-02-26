@@ -301,6 +301,10 @@ async def invoke_chat_endpoint(
         "doc_ids": payload.doc_ids or [],
         "user_id": str(current_user.user_id),
         "use_naive_generator": settings.use_naive_mcq_generator,
+        "edit_mode": payload.edit_mode,
+        "edit_target": payload.edit_target,
+        "edit_indices": payload.edit_indices,
+        "edit_strategy": payload.edit_strategy,
     }
 
     # --- Concept-aware retrieval (when documents are mentioned) ---

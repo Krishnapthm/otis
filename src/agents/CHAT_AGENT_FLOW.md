@@ -1,74 +1,168 @@
-# Chat Agent Flow
+# Chat Agent Flow (Current)
 
-This document defines the active chat invocation flow and state transitions.
+This document describes the active chat graph implemented in `src/agents/chat_agent.py` and its per-question MCQ subgraph in `src/agents/mcq_subgraph.py`.
 
-## Execution Order
+## High-Level Flow
 
 ```mermaid
 flowchart TD
-    A[User Prompt + Mentioned Doc IDs] --> B[guardrail_node]
-    B -->|ALLOW| C[query_generation_node]
-    B -->|BLOCK| Z[END]
-    C --> D[retrieval_node]
-    D --> E{generator_router}
-    E -->|DEFAULT| F[chat_model]
-    E -->|NAIVE| G[naive_mcq_generator_node]
-    F --> Z
-    G --> Z
+        A[User Prompt + Mentioned Doc IDs] --> B[scope_classifier]
+        B -->|ALLOW| C[intent_classifier]
+        B -->|BLOCK| Z[END]
+
+        C -->|mcq_request/followup| D[planner]
+        C -->|utility_task| U[chat_tools]
+        C -->|clarification| H[chat_model]
+
+        D -->|edit_strategy=patch| U
+        D -->|edit_mode && retrieval_signature_valid*| E[dispatch_questions]
+        D -->|otherwise| R[retrieval]
+
+        R --> E
+        E --> Q[question_subgraph_runner via Send per question]
+        Q --> F[assemble_final_output]
+        F --> G[finalize_metadata]
+        G --> H
+
+        U -->|artifact_bump=true| G
+        U -->|otherwise| H
+
+        H --> Z
 ```
 
-## State Contract
+\* `retrieval_signature_valid` is currently a placeholder gate.
 
-The active chat state carries the following retrieval-related fields:
+## Per-Question Subgraph
 
-- `user_prompt: str`
-- `doc_ids: list[uuid.UUID]`
-- `user_id: str`
-- `search_queries: list[str]`
-- `retrieved_chunks: list[RetrievedChunk]`
-- `use_naive_generator: bool`
-
-`RetrievedChunk` shape:
-
-- `chunk_id: str`
-- `doc_id: str`
-- `content: str`
-- `score: float`
-- `metadata: dict`
-
-## Query Generation Node
-
-`query_generation_node` performs a deterministic prompt-chained step:
-
-1. Reads `user_prompt` and `doc_ids` from graph state.
-2. Fetches concept map from `document_concepts` for mentioned documents.
-3. Generates `num_search_queries` semantic queries.
-4. Writes `search_queries` to graph state.
-
-## Retrieval Node
-
-`retrieval_node` performs deterministic retrieval:
-
-1. Iterates over `search_queries`.
-2. Executes vector search with strict filter `document_id IN doc_ids`.
-3. Merges results and deduplicates by `chunk_id` or content hash.
-4. Caps output to `max_retrieved_chunks`.
-5. Writes `retrieved_chunks` to graph state.
-
-## Generator Handoff
-
-The default generator (`chat_model`) receives grounded context from `retrieved_chunks` by prepending a system grounding message. The naive generator branch is enabled only when `use_naive_mcq_generator` is true.
-
-## Observability Pattern
-
-The retrieval step is implemented as a deterministic graph node (Runnable-backed function node), not a ToolNode.
+Each question runs in an isolated subgraph instance. This prevents shared-state collisions and allows independent retry behavior per question.
 
 ```mermaid
-flowchart LR
-    N[Deterministic Node] --> T[LangGraph Trace Span]
-    T --> U[Node Updates Stream]
-    T --> V[Custom Stream Events]
-    T --> W[LangSmith Evaluation]
+flowchart TD
+        START --> STEM
+        STEM --> OPTIONS
+        STEM --> DISTRACTORS
+        OPTIONS --> VALIDATOR
+        DISTRACTORS --> VALIDATOR
+        VALIDATOR -->|pass| FINALIZE
+        VALIDATOR -->|retry_count < max| STEM
+        VALIDATOR -->|retry_count >= max| FINALIZE
+        FINALIZE --> END
 ```
 
-This pattern keeps routing deterministic and provides clear per-node traces for evaluation.
+Properties:
+
+- Fan-out happens per question (`Send` payload includes `plan`, `question_index`, `retrieved_chunks`).
+- Subgraph retry loop is local to that question only.
+- Main graph receives only finalized draft outputs.
+
+## Main State Contract
+
+Primary fields (from `src/agents/utils/state.py`):
+
+- Guardrails and routing:
+  - `before_agent_guardrail`
+  - `intent`
+- Retrieval and planning:
+  - `plan`
+  - `plan_version`
+  - `retrieved_chunks`
+  - `retrieval_status`
+  - `validation_feedback`
+- Parallel draft aggregation:
+  - `mcq_drafts: Annotated[list[MCQDraft], add]`
+  - `final_mcqs: list[FinalMCQ]`
+- Surgical edit controls:
+  - `edit_mode: bool`
+  - `edit_target: Literal["all", "specific"]`
+  - `edit_indices: list[int]`
+  - `edit_strategy: Literal["regenerate", "patch"]`
+  - `existing_drafts: list[MCQDraft]`
+- Artifact metadata:
+  - `artifact_version`
+  - `artifact_bump`
+  - `tool_result`
+  - `retrieval_signature`
+  - `retrieval_signature_valid`
+
+## Subgraph State Contract
+
+`QuestionSubgraphState` includes:
+
+- `plan`
+- `question_index`
+- `retrieved_chunks`
+- `existing_draft`
+- `stem`
+- `options`
+- `correct_answer`
+- `distractors`
+- `explanation`
+- `retry_count`
+- `validation_passed`
+- `validation_feedback`
+- `draft`
+
+## MCQ Output Contract
+
+- Intermediate: `MCQDraft`
+  - `question_index`
+  - `stem`
+  - `options`
+  - `answer`
+  - `distractors`
+  - `explanation`
+- Final: `FinalMCQ`
+  - `question_index`
+  - `question`
+  - `options[{A|B|C|D, text}]`
+  - `right_answer`
+  - `explanation`
+
+Explanations are required in final MCQ output. Validator does **not** score explanation quality.
+
+## Ordering and Merge Semantics
+
+- Parallel subgraph outputs are merged using reducer semantics on `mcq_drafts`.
+- `assemble_final_output` sorts drafts by `question_index` before emitting `final_mcqs`.
+
+## Placeholder / Deferred Items
+
+The following are intentionally scaffolded but not fully implemented yet:
+
+1. `chat_tools` execution is a placeholder route.
+2. `patch_mcq` tool behavior is scaffolded; no full patch engine yet.
+3. Retrieval-skip validity logic (`retrieval_signature_valid`) is placeholder-driven.
+4. Artifact version persistence is state-level; no dedicated DB versioning contract yet.
+5. Session summary lifecycle is currently represented as prompt inputs/placeholders.
+
+## Model Placeholders
+
+All new modular nodes default to `gpt-4.1-nano` placeholders in `src/agents/utils/llm_config.py`:
+
+- `guardrail_llm`
+- `intent_llm`
+- `planner_llm`
+- `retrieval_llm`
+- `stem_llm`
+- `options_llm`
+- `distractors_llm`
+- `validator_llm`
+- `chat_no_tools_llm`
+
+These aliases are intended to be swapped without changing graph logic.
+
+## Prompt Layout
+
+Prompt modules are split by concern in `src/agents/prompts`:
+
+- `classification.py`
+- `planner.py`
+- `generation.py`
+- `validator.py`
+- `chat.py`
+
+Registry entrypoint: `src/agents/prompts/__init__.py`.
+
+## Observability
+
+Nodes emit custom stream updates through `get_stream_writer()` for progress status and details, enabling SSE event replay at the API layer.
