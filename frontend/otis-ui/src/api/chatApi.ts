@@ -86,11 +86,27 @@ export interface ChatInvokeErrorEvent {
   detail: string;
 }
 
+export interface ChatInvokeThinkingEvent {
+  event: "thinking";
+  node: string;
+  status: "started" | "completed";
+  label: string;
+  detail?: string;
+}
+
+export interface ChatInvokeReasoningTokenEvent {
+  event: "reasoning_token";
+  content: string;
+  node?: string;
+}
+
 export type ChatInvokeEvent =
   | ChatInvokeStartedEvent
   | ChatInvokeTokenEvent
   | ChatInvokeDoneEvent
-  | ChatInvokeErrorEvent;
+  | ChatInvokeErrorEvent
+  | ChatInvokeThinkingEvent
+  | ChatInvokeReasoningTokenEvent;
 
 // ============================================================================
 // Chat API
@@ -200,6 +216,8 @@ export const chatApi = {
         onToken: (chunk: string) => void;
         onDone: (message: ChatMessageResponse) => void;
         onError: (error: string) => void;
+        onThinking?: (event: ChatInvokeThinkingEvent) => void;
+        onReasoningToken?: (event: ChatInvokeReasoningTokenEvent) => void;
       },
       docIds?: string[],
       mentions?: { id: string; label: string; triggerChar: string }[],
@@ -258,6 +276,10 @@ export const chatApi = {
                   handlers.onDone(event.assistant_message);
                 } else if (event.event === "error") {
                   handlers.onError(event.detail || "Stream error");
+                } else if (event.event === "thinking") {
+                  handlers.onThinking?.(event);
+                } else if (event.event === "reasoning_token") {
+                  handlers.onReasoningToken?.(event);
                 }
               } catch (error) {
                 console.error("Failed to parse chat stream event:", error);

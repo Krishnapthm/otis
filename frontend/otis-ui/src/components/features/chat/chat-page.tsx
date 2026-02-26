@@ -300,6 +300,8 @@ export default function ChatPage() {
         role: "assistant",
         content: "",
         createdAt: new Date().toISOString(),
+        isStreaming: true,
+        thinking: [],
       };
 
       setMessages((prev) => [
@@ -314,6 +316,75 @@ export default function ChatPage() {
           resolvedChatId,
           payload.message,
           {
+            onThinking: (event) => {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== optimisticAssistantId) return msg;
+                  const steps = [...(msg.thinking ?? [])];
+
+                  if (event.status === "started") {
+                    // Mark all prior steps as complete
+                    const updated = steps.map((s) =>
+                      s.status === "active" ? { ...s, status: "complete" as const } : s,
+                    );
+                    // Add the new active step
+                    updated.push({
+                      node: event.node,
+                      label: event.label,
+                      status: "active" as const,
+                    });
+                    return { ...msg, thinking: updated };
+                  }
+
+                  if (event.status === "completed") {
+                    const updated = steps.map((s) =>
+                      s.node === event.node
+                        ? {
+                            ...s,
+                            status: "complete" as const,
+                            description: event.detail ?? s.description,
+                          }
+                        : s,
+                    );
+                    return { ...msg, thinking: updated };
+                  }
+
+                  return msg;
+                }),
+              );
+            },
+            onReasoningToken: (event) => {
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== optimisticAssistantId) return msg;
+                  const steps = [...(msg.thinking ?? [])];
+                  // Find the matching active step, or the last active step
+                  let targetIdx = -1;
+                  if (event.node) {
+                    targetIdx = steps.findIndex(
+                      (s) => s.node === event.node && s.status === "active",
+                    );
+                  } else {
+                    for (let i = steps.length - 1; i >= 0; i--) {
+                      if (steps[i].status === "active") {
+                        targetIdx = i;
+                        break;
+                      }
+                    }
+                  }
+
+                  if (targetIdx === -1) return msg;
+
+                  const updated = [...steps];
+                  updated[targetIdx] = {
+                    ...updated[targetIdx],
+                    reasoningText:
+                      (updated[targetIdx].reasoningText ?? "") + event.content,
+                  };
+                  return { ...msg, thinking: updated };
+                }),
+              );
+            },
             onToken: (chunk) => {
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -325,17 +396,30 @@ export default function ChatPage() {
             },
             onDone: (assistantMessage) => {
               setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === optimisticAssistantId
-                    ? apiMessageToLocal(assistantMessage)
-                    : msg,
-                ),
+                prev.map((msg) => {
+                  if (msg.id !== optimisticAssistantId) return msg;
+                  const finalMsg = apiMessageToLocal(assistantMessage);
+                  // Preserve thinking steps, mark all complete
+                  const completedSteps = (msg.thinking ?? []).map((s) => ({
+                    ...s,
+                    status: "complete" as const,
+                  }));
+                  return {
+                    ...finalMsg,
+                    thinking: completedSteps.length > 0 ? completedSteps : undefined,
+                    isStreaming: false,
+                  };
+                }),
               );
             },
             onError: (error) => {
               toast.error(error || "Chat stream failed");
               setMessages((prev) =>
-                prev.filter((msg) => msg.id !== optimisticAssistantId),
+                prev.map((msg) =>
+                  msg.id === optimisticAssistantId
+                    ? { ...msg, isStreaming: false }
+                    : msg,
+                ),
               );
             },
           },

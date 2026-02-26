@@ -43,17 +43,47 @@ class AgentNodes:
 
     async def guardrail_node(self, state: State) -> dict:
         """Entry guardrail node to validate intent and block invalid requests."""
+        writer = get_stream_writer()
+        writer(
+            {
+                "event": "node_update",
+                "node": "guardrail",
+                "status": "started",
+                "label": "Checking your request\u2026",
+            }
+        )
+
+        messages = state.get("messages") or []
+        user_request = messages[-1] if messages else state.get("user_prompt", "")
+
         prompt = await PROMPTS["before_agent_guardrail"].ainvoke(
-            {"user_request": state["chat_messages"][-1]}
+            {"user_request": user_request}
         )
         result = await self.guardrail_llm.ainvoke(prompt)
+
+        writer(
+            {
+                "event": "node_update",
+                "node": "guardrail",
+                "status": "completed",
+                "label": "Checking your request\u2026",
+                "detail": "Looking good, let\u2019s go",
+            }
+        )
         return {"intent": result}
 
     # ── query generation ─────────────────────────────────────────
 
     async def query_generation_node(self, state: State) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Generating semantic search queries"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "query_generation",
+                "status": "started",
+                "label": "Figuring out what to look for\u2026",
+            }
+        )
 
         user_prompt = resolve_user_prompt(state)
         doc_ids = state.get("doc_ids") or []
@@ -82,14 +112,29 @@ class AgentNodes:
         if not unique_queries:
             unique_queries = [user_prompt.strip()][: settings.num_search_queries]
 
-        writer({"status": "Queries generated", "num_queries": len(unique_queries)})
+        writer(
+            {
+                "event": "node_update",
+                "node": "query_generation",
+                "status": "completed",
+                "label": "Figuring out what to look for\u2026",
+                "detail": f"Found {len(unique_queries)} angles to explore",
+            }
+        )
         return {"user_prompt": user_prompt, "search_queries": unique_queries}
 
     # ── retrieval ────────────────────────────────────────────────
 
     async def retrieval_node(self, state: State) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Retrieving context chunks"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "retrieval",
+                "status": "started",
+                "label": "Searching your documents\u2026",
+            }
+        )
 
         if not settings.chat_graph_retrieval_enabled:
             return {"retrieved_chunks": []}
@@ -105,14 +150,29 @@ class AgentNodes:
             doc_ids=doc_ids, search_queries=search_queries, user_id=user_id
         )
 
-        writer({"status": "Retrieval complete", "docs": len(deduped_results)})
+        writer(
+            {
+                "event": "node_update",
+                "node": "retrieval",
+                "status": "completed",
+                "label": "Searching your documents\u2026",
+                "detail": f"Pulled {len(deduped_results)} relevant passages",
+            }
+        )
         return {"retrieved_chunks": deduped_results}
 
     # ── MCQ generation ───────────────────────────────────────────
 
     async def naive_mcq_generator_node(self, state: State) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Generating naive MCQs"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "mcq_generation",
+                "status": "started",
+                "label": "Drafting questions from what I found\u2026",
+            }
+        )
 
         retrieved_chunks = state.get("retrieved_chunks") or []
         user_prompt = resolve_user_prompt(state)
@@ -125,12 +185,32 @@ class AgentNodes:
             }
         )
         response = await self.base_llm.ainvoke(prompt)
-        return {"chat_messages": [response]}
+
+        writer(
+            {
+                "event": "node_update",
+                "node": "mcq_generation",
+                "status": "completed",
+                "label": "Drafting questions from what I found\u2026",
+                "detail": "Questions ready",
+            }
+        )
+        return {"messages": [response]}
 
     # ── chat ─────────────────────────────────────────────────────
 
     async def chat_model(self, state: State) -> dict:
-        chat_messages = list(state.get("chat_messages") or [])
+        writer = get_stream_writer()
+        writer(
+            {
+                "event": "node_update",
+                "node": "chat_generation",
+                "status": "started",
+                "label": "Thinking about your question\u2026",
+            }
+        )
+
+        messages = list(state.get("messages") or [])
         retrieved_chunks = state.get("retrieved_chunks") or []
 
         if retrieved_chunks:
@@ -142,26 +222,58 @@ class AgentNodes:
                     f"{context_text}"
                 )
             )
-            chat_messages = [system_message, *chat_messages]
+            messages = [system_message, *messages]
 
-        response = await self.base_llm.ainvoke(chat_messages)
-        return {"chat_messages": [response]}
+        response = await self.base_llm.ainvoke(messages)
+
+        writer(
+            {
+                "event": "node_update",
+                "node": "chat_generation",
+                "status": "completed",
+                "label": "Thinking about your question\u2026",
+                "detail": "Done thinking",
+            }
+        )
+        return {"messages": [response]}
 
     # ── document / summary flow ──────────────────────────────────
 
     async def fetch_documents(self, state: AgentState) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Fetching Documents"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "fetch_documents",
+                "status": "started",
+                "label": "Reading your documents\u2026",
+            }
+        )
 
         async with async_session_maker() as db:
             documents = await fetch_document_content(state["doc_ids"], db=db)
 
-        writer({"status": "Documents Fetched", "num_docs": len(documents)})
+        writer(
+            {
+                "event": "node_update",
+                "node": "fetch_documents",
+                "status": "completed",
+                "label": "Reading your documents\u2026",
+                "detail": f"Read {len(documents)} document(s)",
+            }
+        )
         return {"documents": documents}
 
     async def generate_summaries(self, state: AgentState) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Extracting Content"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "generate_summaries",
+                "status": "started",
+                "label": "Picking out the key concepts\u2026",
+            }
+        )
 
         overview_list = []
         for doc in state.get("documents", []):
@@ -171,7 +283,11 @@ class AgentNodes:
 
         writer(
             {
-                "status": "Concepts extracted",
+                "event": "node_update",
+                "node": "generate_summaries",
+                "status": "completed",
+                "label": "Picking out the key concepts\u2026",
+                "detail": "Found concepts across your docs",
                 "overview": [o.model_dump() for o in overview_list],
             }
         )
@@ -202,7 +318,14 @@ class AgentNodes:
 
     async def generate_search_queriesv2(self, state: AgentState) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Generating search queries for selected concepts"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "search_queries_v2",
+                "status": "started",
+                "label": "Building search queries for your topics\u2026",
+            }
+        )
 
         selected_concepts = state.get("selected_concepts") or []
         if not selected_concepts:
@@ -211,12 +334,27 @@ class AgentNodes:
         queries = await self._generate_queries_for_concepts(
             selected_concepts, "search_queries_v2"
         )
-        writer({"status": "Queries generated", "num_queries": len(queries)})
+        writer(
+            {
+                "event": "node_update",
+                "node": "search_queries_v2",
+                "status": "completed",
+                "label": "Building search queries for your topics\u2026",
+                "detail": f"Created {len(queries)} search queries",
+            }
+        )
         return {"search_queries": queries}
 
     async def generate_search_queries(self, state: AgentState) -> dict:
         writer = get_stream_writer()
-        writer({"status": "Generating search queries for selected concepts"})
+        writer(
+            {
+                "event": "node_update",
+                "node": "search_queries",
+                "status": "started",
+                "label": "Building search queries for your topics\u2026",
+            }
+        )
 
         selected_concepts = state.get("selected_concepts") or []
         if not selected_concepts:
@@ -225,7 +363,15 @@ class AgentNodes:
         queries = await self._generate_queries_for_concepts(
             selected_concepts, "search_queries"
         )
-        writer({"status": "Queries generated", "num_queries": len(queries)})
+        writer(
+            {
+                "event": "node_update",
+                "node": "search_queries",
+                "status": "completed",
+                "label": "Building search queries for your topics\u2026",
+                "detail": f"Created {len(queries)} search queries",
+            }
+        )
         return {"search_queries": queries}
 
     # ── backward-compat alias ────────────────────────────────────

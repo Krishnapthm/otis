@@ -15,6 +15,8 @@ export interface ThinkingStep {
   label: string;
   description?: string;
   status: "complete" | "active" | "pending";
+  node?: string;
+  reasoningText?: string;
 }
 
 export interface ChatMessage {

@@ -283,7 +283,7 @@ async def invoke_chat_endpoint(
 
     config = {"configurable": {"thread_id": str(chat_id)}}
     input_state = {
-        "chat_messages": [{"role": "user", "content": message_text}],
+        "messages": [{"role": "user", "content": message_text}],
         "user_prompt": message_text,
         "doc_ids": payload.doc_ids or [],
         "user_id": str(current_user.user_id),
@@ -293,6 +293,7 @@ async def invoke_chat_endpoint(
     # --- Concept-aware retrieval (when documents are mentioned) ---
     # If the user attached doc_ids (via mention picker), run two-layer retrieval
     # and inject the retrieved context as a system message.
+    did_pre_retrieval = False
     if payload.doc_ids and settings.chat_router_retrieval_fallback:
         try:
             _embeddings = OllamaEmbeddings(
@@ -308,7 +309,8 @@ async def invoke_chat_endpoint(
             )
             context_text = format_retrieved_context(retrieved_docs)
             if context_text:
-                input_state["chat_messages"].insert(
+                did_pre_retrieval = True
+                input_state["messages"].insert(
                     0,
                     {
                         "role": "system",
@@ -340,14 +342,75 @@ async def invoke_chat_endpoint(
             + "\n\n"
         )
 
-        try:
-            result = await graph.ainvoke(input_state, config=config)
-            full_text = _extract_text_from_chat_result(result)
+        # --- Synthetic thinking events for pre-graph retrieval ---
+        if did_pre_retrieval:
+            yield f"data: {json.dumps({'event': 'thinking', 'node': 'document_search', 'status': 'started', 'label': 'Searching your documents…'})}\n\n"
+            yield f"data: {json.dumps({'event': 'thinking', 'node': 'document_search', 'status': 'completed', 'label': 'Searching your documents…', 'detail': 'Found relevant context'})}\n\n"
 
-            words = full_text.split(" ") if full_text else []
-            for index, token in enumerate(words):
-                chunk = token if index == len(words) - 1 else f"{token} "
-                yield f"data: {json.dumps({'event': 'token', 'content': chunk})}\n\n"
+        try:
+            full_text = ""
+            reasoning_text = ""
+
+            # Only stream tokens from terminal generation nodes
+            _GENERATION_NODES = {"chat_model", "naive_mcq_generator_node"}
+
+            async for mode, chunk in graph.astream(
+                input_state,
+                config=config,
+                stream_mode=["custom", "messages"],
+            ):
+                if mode == "custom":
+                    # Forward writer() payloads as thinking events
+                    # Extract fields explicitly to avoid key collision
+                    # (chunk already has "event": "node_update")
+                    yield f"data: {json.dumps({'event': 'thinking', 'node': chunk.get('node', ''), 'status': chunk.get('status', ''), 'label': chunk.get('label', ''), 'detail': chunk.get('detail')})}\n\n"
+
+                elif mode == "messages":
+                    # chunk is a tuple: (AIMessageChunk, metadata)
+                    msg_chunk, metadata = chunk
+                    node_name = metadata.get("langgraph_node", "")
+
+                    # Skip tokens from non-generation nodes (guardrail,
+                    # query_generation, retrieval produce structured output
+                    # that should not be shown as chat text).
+                    if node_name not in _GENERATION_NODES:
+                        continue
+
+                    # Check for reasoning/thinking content (OpenAI o-series)
+                    reasoning_content = getattr(msg_chunk, "additional_kwargs", {}).get(
+                        "reasoning_content"
+                    )
+                    if reasoning_content:
+                        reasoning_text += reasoning_content
+                        yield f"data: {json.dumps({'event': 'reasoning_token', 'content': reasoning_content, 'node': node_name})}\n\n"
+
+                    # Check for thinking content blocks (Anthropic-style)
+                    thinking_blocks = [
+                        block
+                        for block in getattr(msg_chunk, "content", [])
+                        if isinstance(block, dict) and block.get("type") == "thinking"
+                    ]
+                    for block in thinking_blocks:
+                        thinking_text = block.get("thinking", "")
+                        if thinking_text:
+                            reasoning_text += thinking_text
+                            yield f"data: {json.dumps({'event': 'reasoning_token', 'content': thinking_text, 'node': node_name})}\n\n"
+
+                    # Regular content tokens
+                    content = ""
+                    if isinstance(msg_chunk.content, str):
+                        content = msg_chunk.content
+                    elif isinstance(msg_chunk.content, list):
+                        # Extract text blocks only (skip thinking blocks)
+                        for block in msg_chunk.content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                content += block.get("text", "")
+                            elif isinstance(block, str):
+                                content += block
+
+                    if content:
+                        full_text += content
+                        yield f"data: {json.dumps({'event': 'token', 'content': content})}\n\n"
 
             final_message = await update_chat_message(
                 db,

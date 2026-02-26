@@ -11,6 +11,7 @@ embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="http://ollama:
 llm = AzureChatOpenAI(
     azure_deployment="gpt-4o-mini",
     api_version="2024-12-01-preview",
+    streaming=True,
 )
 
 guardrail_llm = AzureChatOpenAI(

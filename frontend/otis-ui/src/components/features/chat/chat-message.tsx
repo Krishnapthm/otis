@@ -1,12 +1,17 @@
 import type { ChatMessage as ChatMessageType } from "@/lib/chat-types";
 import { cn } from "@/lib/utils";
-import { SearchIcon } from "lucide-react";
+import {
+  BrainIcon,
+  FileTextIcon,
+  SearchIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtHeader,
-  ChainOfThoughtSearchResult,
-  ChainOfThoughtSearchResults,
   ChainOfThoughtStep,
 } from "@/components/ai-elements/chain-of-thought";
 import {
@@ -244,8 +249,25 @@ interface ChatMessageProps {
   message: ChatMessageType;
 }
 
+/** Map step labels to contextual icons for the ChainOfThought UI. */
+function getStepIcon(label: string): LucideIcon | undefined {
+  const l = label.toLowerCase();
+  if (l.includes("search") || l.includes("retriev")) return SearchIcon;
+  if (l.includes("read") || l.includes("fetch") || l.includes("document"))
+    return FileTextIcon;
+  if (l.includes("draft") || l.includes("generat") || l.includes("think"))
+    return SparklesIcon;
+  if (l.includes("check") || l.includes("guard")) return ShieldCheckIcon;
+  if (l.includes("figur") || l.includes("quer") || l.includes("build"))
+    return BrainIcon;
+  return undefined;
+}
+
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const hasThinking = !isUser && message.thinking && message.thinking.length > 0;
+  const isStreaming = message.isStreaming ?? false;
+  const hideMessageBubble = isStreaming && !message.content;
 
   return (
     <div
@@ -254,18 +276,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
         isUser ? "ml-auto flex-row-reverse" : "",
       )}
     >
-      {/* Avatar */}
-      {/* <div
-                className={cn(
-                    "flex size-8 shrink-0 items-center justify-center rounded-full border",
-                    isUser
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                )}
-            >
-                {isUser ? <UserIcon className="size-4" /> : <BotIcon className="size-4" />}
-            </div> */}
-
       {/* Content */}
       <div
         className={cn(
@@ -273,39 +283,33 @@ export function ChatMessage({ message }: ChatMessageProps) {
           isUser ? "text-right" : "",
         )}
       >
-        {/* <div className="text-xs font-medium text-muted-foreground">
-                    {isUser ? "You" : "Otis"}
-                </div> */}
-
         {/* Chain of Thought for assistant */}
-        {!isUser && message.thinking && message.thinking.length > 0 && (
-          <ChainOfThought>
-            <ChainOfThoughtHeader>Thoughts</ChainOfThoughtHeader>
+        {hasThinking && (
+          <ChainOfThought
+            defaultOpen={true}
+            open={isStreaming ? true : undefined}
+          >
+            <ChainOfThoughtHeader>
+              {isStreaming ? "Working on it\u2026" : "Thoughts"}
+            </ChainOfThoughtHeader>
             <ChainOfThoughtContent>
-              {message.thinking.map((step, idx) => (
+              {message.thinking!.map((step, idx) => (
                 <ChainOfThoughtStep
-                  key={idx}
+                  key={step.node ?? idx}
                   label={step.label}
                   description={step.description}
                   status={step.status}
-                  icon={
-                    step.label.toLowerCase().includes("search")
-                      ? SearchIcon
-                      : undefined
-                  }
+                  icon={getStepIcon(step.label)}
                 >
-                  {step.label.toLowerCase().includes("search") && (
-                    <ChainOfThoughtSearchResults>
-                      <ChainOfThoughtSearchResult>
-                        requirements.md
-                      </ChainOfThoughtSearchResult>
-                      <ChainOfThoughtSearchResult>
-                        architecture.md
-                      </ChainOfThoughtSearchResult>
-                      <ChainOfThoughtSearchResult>
-                        design-spec.md
-                      </ChainOfThoughtSearchResult>
-                    </ChainOfThoughtSearchResults>
+                  {step.reasoningText && (
+                    <details className="mt-1">
+                      <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                        Show reasoning
+                      </summary>
+                      <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-1 max-h-40 overflow-y-auto font-mono">
+                        {step.reasoningText}
+                      </pre>
+                    </details>
                   )}
                 </ChainOfThoughtStep>
               ))}
@@ -314,20 +318,22 @@ export function ChatMessage({ message }: ChatMessageProps) {
         )}
 
         {/* Message content */}
-        <div
-          className={cn(
-            "rounded-2xl px-3 py-2 text-sm",
-            isUser ? "inline-block bg-primary text-primary-foreground" : "",
-          )}
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap wrap-break-word">
-              {renderMessageMentions(message.content)}
-            </p>
-          ) : (
-            renderContentWithCitations(message)
-          )}
-        </div>
+        {!hideMessageBubble && (
+          <div
+            className={cn(
+              "rounded-2xl px-3 py-2 text-sm",
+              isUser ? "inline-block bg-primary text-primary-foreground" : "",
+            )}
+          >
+            {isUser ? (
+              <p className="whitespace-pre-wrap wrap-break-word">
+                {renderMessageMentions(message.content)}
+              </p>
+            ) : (
+              renderContentWithCitations(message)
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

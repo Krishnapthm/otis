@@ -87,7 +87,7 @@ class State(TypedDict, total=False):
     """
 
     intent: BeforeAgentGuardrail
-    chat_messages: Annotated[List[ChatMessage], add] = None
+    messages: Annotated[List[ChatMessage], add] = None
     user_prompt: str
     doc_ids: List[uuid.UUID]
     user_id: str
