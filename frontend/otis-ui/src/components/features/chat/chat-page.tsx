@@ -325,7 +325,9 @@ export default function ChatPage() {
                   if (event.status === "started") {
                     // Mark all prior steps as complete
                     const updated = steps.map((s) =>
-                      s.status === "active" ? { ...s, status: "complete" as const } : s,
+                      s.status === "active"
+                        ? { ...s, status: "complete" as const }
+                        : s,
                     );
                     // Add the new active step
                     updated.push({
@@ -406,7 +408,8 @@ export default function ChatPage() {
                   }));
                   return {
                     ...finalMsg,
-                    thinking: completedSteps.length > 0 ? completedSteps : undefined,
+                    thinking:
+                      completedSteps.length > 0 ? completedSteps : undefined,
                     isStreaming: false,
                   };
                 }),

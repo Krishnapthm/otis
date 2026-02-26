@@ -265,7 +265,8 @@ function getStepIcon(label: string): LucideIcon | undefined {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
-  const hasThinking = !isUser && message.thinking && message.thinking.length > 0;
+  const hasThinking =
+    !isUser && message.thinking && message.thinking.length > 0;
   const isStreaming = message.isStreaming ?? false;
   const hideMessageBubble = isStreaming && !message.content;
 
