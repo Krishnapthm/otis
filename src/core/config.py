@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     chat_graph_retrieval_enabled: bool = True
     chat_router_retrieval_fallback: bool = False
 
+    # Token chunk buffering for event persistence
+    token_chunk_size: int = 50  # Flush after accumulating this many chars
+    token_chunk_flush_ms: int = 200  # Flush after this many ms since last flush
+
     @property
     def checkpoint_db_url(self) -> str:
         return self.db_url.replace("+asyncpg", "")

@@ -1,13 +1,15 @@
 from typing import List, Optional
 import uuid
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.db.models import (
     ChatMessageDocuments,
+    ChatMessageEvents,
     ChatMessages,
     Chats,
     Documents,
@@ -17,11 +19,15 @@ from src.api.db.schema import (
     AuthResponse,
     ChatCreate,
     ChatMessageCreate,
+    ChatMessageEventResponse,
+    ChatMessageEventReplayResponse,
     ChatMessageResponse,
     ChatMessageUpdate,
     ChatResponse,
     ChatUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def _is_admin(db: AsyncSession, user_id: uuid.UUID) -> bool:
@@ -342,16 +348,26 @@ async def list_chat_messages(
     current_user: AuthResponse,
     limit: int = 200,
     skip: int = 0,
+    exclude_incomplete: bool = False,
 ) -> List[ChatMessageResponse]:
+    """List messages for a chat ordered by sequence.
+
+    Args:
+        exclude_incomplete: If True, exclude messages with status in
+            ('pending', 'streaming', 'failed'). Use this when building
+            LLM context to prevent incomplete assistant responses from
+            polluting conversation history.
+    """
     await _get_chat_for_user(db, chat_id, current_user)
 
-    result = await db.execute(
-        select(ChatMessages)
-        .where(ChatMessages.chat_id == chat_id)
-        .order_by(ChatMessages.sequence.asc())
-        .offset(skip)
-        .limit(limit)
-    )
+    query = select(ChatMessages).where(ChatMessages.chat_id == chat_id)
+
+    if exclude_incomplete:
+        query = query.where(ChatMessages.status == "completed")
+
+    query = query.order_by(ChatMessages.sequence.asc()).offset(skip).limit(limit)
+
+    result = await db.execute(query)
     messages = result.scalars().all()
     message_ids = [message.message_id for message in messages]
     message_doc_ids = await _get_message_doc_ids(db, message_ids)
@@ -519,3 +535,164 @@ async def delete_chat_message(
     await db.commit()
 
     return {"message": "Message deleted successfully"}
+
+
+# ==========================================================================
+# Event CRUD
+# ==========================================================================
+
+
+def _event_to_response(event: ChatMessageEvents) -> ChatMessageEventResponse:
+    return ChatMessageEventResponse(
+        event_id=event.event_id,
+        message_id=event.message_id,
+        seq=event.seq,
+        event_type=event.event_type,
+        content=event.content,
+        metadata=event.metadata_,
+        created_at=event.created_at,
+    )
+
+
+async def create_message_event(
+    db: AsyncSession,
+    message_id: uuid.UUID,
+    seq: int,
+    event_type: str,
+    content: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> ChatMessageEvents:
+    """Insert a single event row and return the ORM object (unflushed).
+
+    The caller is responsible for calling ``db.flush()`` / ``db.commit()``.
+    This allows batching multiple events before hitting the database.
+    """
+    event = ChatMessageEvents(
+        message_id=message_id,
+        seq=seq,
+        event_type=event_type,
+        content=content,
+        metadata_=metadata,
+    )
+    db.add(event)
+    return event
+
+
+async def bulk_create_message_events(
+    db: AsyncSession,
+    events: List[dict],
+) -> None:
+    """Batch-insert multiple event rows.
+
+    Each dict must have: message_id, seq, event_type.
+    Optional keys: content, metadata.
+
+    Performs a single flush after all adds.
+    """
+    for ev in events:
+        obj = ChatMessageEvents(
+            message_id=ev["message_id"],
+            seq=ev["seq"],
+            event_type=ev["event_type"],
+            content=ev.get("content"),
+            metadata_=ev.get("metadata"),
+        )
+        db.add(obj)
+    await db.flush()
+
+
+async def list_message_events(
+    db: AsyncSession,
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    current_user: AuthResponse,
+    after_seq: int = 0,
+    limit: int = 1000,
+) -> ChatMessageEventReplayResponse:
+    """Fetch events for a message with seq > after_seq, ordered by seq ASC.
+
+    Includes ownership check via chat → user join.
+    Returns is_complete=True when the message has reached a terminal state.
+    """
+    # Ownership check
+    await _get_chat_for_user(db, chat_id, current_user)
+
+    # Verify message belongs to chat
+    message = (
+        await db.execute(
+            select(ChatMessages).where(
+                and_(
+                    ChatMessages.chat_id == chat_id,
+                    ChatMessages.message_id == message_id,
+                )
+            )
+        )
+    ).scalar_one_or_none()
+
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    result = await db.execute(
+        select(ChatMessageEvents)
+        .where(
+            and_(
+                ChatMessageEvents.message_id == message_id,
+                ChatMessageEvents.seq > after_seq,
+            )
+        )
+        .order_by(ChatMessageEvents.seq.asc())
+        .limit(limit)
+    )
+    events = result.scalars().all()
+
+    is_complete = message.status in ("completed", "failed")
+    last_seq = events[-1].seq if events else after_seq
+
+    return ChatMessageEventReplayResponse(
+        events=[_event_to_response(e) for e in events],
+        is_complete=is_complete,
+        last_seq=last_seq,
+    )
+
+
+async def get_latest_event_seq(
+    db: AsyncSession,
+    message_id: uuid.UUID,
+) -> int:
+    """Return the max seq for a message, or 0 if no events exist."""
+    result = (
+        await db.execute(
+            select(func.coalesce(func.max(ChatMessageEvents.seq), 0)).where(
+                ChatMessageEvents.message_id == message_id
+            )
+        )
+    ).scalar_one()
+    return int(result)
+
+
+async def mark_stale_messages_failed(db: AsyncSession) -> int:
+    """Mark any pending/streaming messages as failed (crash recovery).
+
+    Called during application startup to clean up messages that were
+    interrupted by a server restart.
+
+    Returns the number of messages updated.
+    """
+    result = await db.execute(
+        update(ChatMessages)
+        .where(ChatMessages.status.in_(["pending", "streaming"]))
+        .values(
+            status="failed",
+            error={"message": "Server restarted during generation"},
+        )
+        .returning(ChatMessages.message_id)
+    )
+    updated_ids = result.scalars().all()
+    await db.commit()
+    if updated_ids:
+        logger.warning(
+            "Marked %d stale message(s) as failed on startup: %s",
+            len(updated_ids),
+            [str(mid) for mid in updated_ids],
+        )
+    return len(updated_ids)

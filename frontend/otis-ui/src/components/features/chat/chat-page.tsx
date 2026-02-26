@@ -7,7 +7,10 @@ import {
   PaperclipIcon,
   Upload,
 } from "lucide-react";
-import type { ChatMessage as ChatMessageType } from "@/lib/chat-types";
+import type {
+  ChatMessage as ChatMessageType,
+  ThinkingStep,
+} from "@/lib/chat-types";
 import {
   Conversation,
   ConversationContent,
@@ -37,6 +40,7 @@ import {
 } from "@/components/features/mention";
 import type { Token, TriggerConfig } from "@/components/features/mention";
 import { chatApi } from "@/api/chatApi";
+import type { ChatMessageEventResponse } from "@/api/chatApi";
 import { getAllUserDocuments, type Document } from "@/api/docApi";
 import { queryKeys } from "@/api/queryKeys";
 import { useDocuments } from "@/hooks/useDocuments";
@@ -46,6 +50,74 @@ import { toast } from "sonner";
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Reconstruct ThinkingStep[] from persisted events.
+ *
+ * Replays `thinking` and `reasoning_token` events in seq order to rebuild
+ * the same step structure the live SSE stream produces.
+ */
+function eventsToThinkingSteps(
+  events: ChatMessageEventResponse[],
+): ThinkingStep[] | undefined {
+  const steps: ThinkingStep[] = [];
+  const stepByNode = new Map<string, number>(); // node → index in steps[]
+
+  for (const ev of events) {
+    if (ev.event_type === "thinking") {
+      const meta = (ev.metadata ?? {}) as Record<string, string>;
+      const node = meta.node ?? "";
+      const evStatus = meta.status ?? "";
+
+      if (evStatus === "started") {
+        // Mark all prior active steps as complete
+        for (const s of steps) {
+          if (s.status === "active") s.status = "complete";
+        }
+        const idx = steps.length;
+        steps.push({
+          node,
+          label: ev.content ?? "",
+          status: "active",
+        });
+        stepByNode.set(node, idx);
+      } else if (evStatus === "completed") {
+        const idx = stepByNode.get(node);
+        if (idx !== undefined && steps[idx]) {
+          steps[idx].status = "complete";
+          if (meta.detail) steps[idx].description = meta.detail;
+        }
+      }
+    } else if (ev.event_type === "reasoning_token" && ev.content) {
+      const meta = (ev.metadata ?? {}) as Record<string, string>;
+      const node = meta.node;
+      let targetIdx = -1;
+      if (node) {
+        targetIdx = stepByNode.get(node) ?? -1;
+      }
+      if (targetIdx === -1) {
+        // Fall back to last active step
+        for (let i = steps.length - 1; i >= 0; i--) {
+          if (steps[i].status === "active") {
+            targetIdx = i;
+            break;
+          }
+        }
+      }
+      if (targetIdx >= 0) {
+        steps[targetIdx].reasoningText =
+          (steps[targetIdx].reasoningText ?? "") + ev.content;
+      }
+    }
+  }
+
+  // Mark any remaining active steps as complete (message is done)
+  for (const s of steps) {
+    if (s.status === "active") s.status = "complete";
+  }
+
+  return steps.length > 0 ? steps : undefined;
+}
 
 function apiMessageToLocal(msg: {
   message_id: string;
@@ -213,8 +285,48 @@ export default function ChatPage() {
     setIsLoadingMessages(true);
     chatApi.messages
       .list(chatId, { limit: 200 })
-      .then((apiMessages) => {
-        setMessages(apiMessages.map(apiMessageToLocal));
+      .then(async (apiMessages) => {
+        const localMessages = apiMessages.map(apiMessageToLocal);
+
+        // Fetch events for completed assistant messages to restore thinking blocks
+        const assistantMsgs = apiMessages.filter(
+          (m) => m.role === "assistant" && m.status === "completed",
+        );
+
+        if (assistantMsgs.length > 0) {
+          const eventResults = await Promise.allSettled(
+            assistantMsgs.map((m) =>
+              chatApi.messages.replayEvents(chatId, m.message_id),
+            ),
+          );
+
+          const thinkingByMsgId = new Map<string, ThinkingStep[]>();
+
+          for (let i = 0; i < assistantMsgs.length; i++) {
+            const result = eventResults[i];
+            if (
+              result.status === "fulfilled" &&
+              result.value.events.length > 0
+            ) {
+              const steps = eventsToThinkingSteps(result.value.events);
+              if (steps) {
+                thinkingByMsgId.set(assistantMsgs[i].message_id, steps);
+              }
+            }
+          }
+
+          // Attach thinking steps to the corresponding messages
+          if (thinkingByMsgId.size > 0) {
+            for (const msg of localMessages) {
+              const steps = thinkingByMsgId.get(msg.id);
+              if (steps) {
+                msg.thinking = steps;
+              }
+            }
+          }
+        }
+
+        setMessages(localMessages);
       })
       .catch((err) => {
         console.error("Failed to load chat messages:", err);

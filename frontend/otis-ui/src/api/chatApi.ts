@@ -109,6 +109,26 @@ export type ChatInvokeEvent =
   | ChatInvokeReasoningTokenEvent;
 
 // ============================================================================
+// Event Replay Types — mirrors backend ChatMessageEventResponse
+// ============================================================================
+
+export interface ChatMessageEventResponse {
+  event_id: string;
+  message_id: string;
+  seq: number;
+  event_type: string;
+  content: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ChatMessageEventReplayResponse {
+  events: ChatMessageEventResponse[];
+  is_complete: boolean;
+  last_seq: number;
+}
+
+// ============================================================================
 // Chat API
 // ============================================================================
 
@@ -205,6 +225,156 @@ export const chatApi = {
         `/v1/chats/${chatId}/messages/${messageId}`,
       );
       return res.data;
+    },
+
+    /**
+     * GET /v1/chats/{chat_id}/messages/{message_id}/events?after_seq=N
+     *
+     * For completed/failed messages: returns a JSON ChatMessageEventReplayResponse.
+     * For in-progress messages: returns an SSE stream.
+     *
+     * Use `replayEventsJSON` for completed messages and `replayEventsSSE`
+     * for in-progress messages, or use this unified method to detect automatically.
+     */
+    replayEvents: async (
+      chatId: string,
+      messageId: string,
+      afterSeq: number = 0,
+    ): Promise<ChatMessageEventReplayResponse> => {
+      const res = await api.get<ChatMessageEventReplayResponse>(
+        `/v1/chats/${chatId}/messages/${messageId}/events`,
+        { params: { after_seq: afterSeq } },
+      );
+      return res.data;
+    },
+
+    /**
+     * Replay events via SSE for an in-progress (streaming) message.
+     * Reuses the same handler pipeline as the live invoke stream.
+     *
+     * Returns a close handle to stop consuming.
+     */
+    replayEventsSSE: async (
+      chatId: string,
+      messageId: string,
+      handlers: {
+        onToken: (chunk: string) => void;
+        onDone: () => void;
+        onError: (error: string) => void;
+        onThinking?: (event: ChatInvokeThinkingEvent) => void;
+        onReasoningToken?: (event: ChatInvokeReasoningTokenEvent) => void;
+      },
+      afterSeq: number = 0,
+    ): Promise<{ close: () => void }> => {
+      const token = localStorage.getItem("access_token");
+      const baseURL = (api.defaults.baseURL ?? "").replace(/\/$/, "");
+
+      const response = await fetch(
+        `${baseURL}/v1/chats/${chatId}/messages/${messageId}/events?after_seq=${afterSeq}`,
+        {
+          method: "GET",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
+      }
+
+      // Check content type — JSON means completed, SSE means in-progress
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        // Completed message — parse JSON and dispatch events synchronously
+        const replay: ChatMessageEventReplayResponse = await response.json();
+        for (const ev of replay.events) {
+          const etype = ev.event_type;
+          if (etype === "token_chunk" && ev.content) {
+            handlers.onToken(ev.content);
+          } else if (etype === "thinking") {
+            handlers.onThinking?.({
+              event: "thinking",
+              node: (ev.metadata as Record<string, string>)?.node ?? "",
+              status: ((ev.metadata as Record<string, string>)?.status ??
+                "completed") as "started" | "completed",
+              label: ev.content ?? "",
+              detail: (ev.metadata as Record<string, string>)?.detail,
+            });
+          } else if (etype === "reasoning_token" && ev.content) {
+            handlers.onReasoningToken?.({
+              event: "reasoning_token",
+              content: ev.content,
+              node: (ev.metadata as Record<string, string>)?.node,
+            });
+          } else if (etype === "error") {
+            handlers.onError(ev.content || "Unknown error");
+          }
+        }
+        handlers.onDone();
+        return { close: () => {} };
+      }
+
+      // SSE stream — same reader pattern as invoke
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let isAborted = false;
+
+      const processStream = async () => {
+        if (!reader) {
+          handlers.onError("No response body");
+          return;
+        }
+
+        try {
+          while (!isAborted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+
+              try {
+                const event = JSON.parse(line.slice(6)) as ChatInvokeEvent;
+
+                if (event.event === "token") {
+                  handlers.onToken(event.content ?? "");
+                } else if (event.event === "done") {
+                  handlers.onDone();
+                } else if (event.event === "error") {
+                  handlers.onError(event.detail || "Stream error");
+                } else if (event.event === "thinking") {
+                  handlers.onThinking?.(event);
+                } else if (event.event === "reasoning_token") {
+                  handlers.onReasoningToken?.(event);
+                }
+              } catch (error) {
+                console.error("Failed to parse replay stream event:", error);
+              }
+            }
+          }
+        } catch (error) {
+          if (!isAborted) {
+            handlers.onError(
+              error instanceof Error ? error.message : "Stream error",
+            );
+          }
+        }
+      };
+
+      processStream();
+      return {
+        close: () => {
+          isAborted = true;
+          reader?.cancel();
+        },
+      };
     },
 
     /** POST /v1/chats/{chat_id}/invoke (SSE stream) */

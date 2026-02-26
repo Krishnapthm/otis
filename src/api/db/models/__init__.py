@@ -287,6 +287,52 @@ class ChatMessages(Base):
     chat_message_documents: Mapped[List["ChatMessageDocuments"]] = relationship(
         "ChatMessageDocuments", back_populates="message"
     )
+    events: Mapped[List["ChatMessageEvents"]] = relationship(
+        "ChatMessageEvents",
+        back_populates="message",
+        order_by="ChatMessageEvents.seq",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ChatMessageEvents(Base):
+    """Persistent streaming events for assistant message generation.
+
+    Stores thinking updates, token chunks, reasoning tokens, lifecycle events,
+    and arbitrary structured metadata. Supports resumable streaming via per-message
+    monotonic sequencing (message_id, seq).
+    """
+
+    __tablename__ = "chat_message_events"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["message_id"],
+            ["chat_messages.message_id"],
+            ondelete="CASCADE",
+            name="chat_message_events_message_id_fkey",
+        ),
+        PrimaryKeyConstraint("event_id", name="chat_message_events_pkey"),
+        UniqueConstraint("message_id", "seq", name="uq_message_events_seq"),
+        Index("idx_message_events_message_id", "message_id"),
+        Index("idx_message_events_message_seq", "message_id", "seq"),
+    )
+
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[Optional[str]] = mapped_column(Text)
+    metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSONB)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+
+    message: Mapped["ChatMessages"] = relationship(
+        "ChatMessages", back_populates="events"
+    )
 
 
 class ChatMessageDocuments(Base):

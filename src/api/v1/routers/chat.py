@@ -1,10 +1,11 @@
-from typing import List
+from typing import List, Optional
 import uuid
 import json
 import os
 import logging
+import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from langchain_ollama import OllamaEmbeddings
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,12 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.crud import (
     create_chat,
     create_chat_message,
+    create_message_event,
     delete_chat,
     delete_chat_message,
     get_chat,
     get_chat_message,
     list_chat_messages,
     list_chats,
+    list_message_events,
     update_chat,
     update_chat_message,
 )
@@ -27,11 +30,21 @@ from src.api.db.schema import (
     ChatCreate,
     ChatInvokeRequest,
     ChatMessageCreate,
+    ChatMessageEventReplayResponse,
     ChatMessageResponse,
     ChatMessageUpdate,
     ChatResponse,
     ChatUpdate,
 )
+from src.api.constants import (
+    EVENT_DONE,
+    EVENT_ERROR,
+    EVENT_REASONING_TOKEN,
+    EVENT_STARTED,
+    EVENT_THINKING,
+    EVENT_TOKEN_CHUNK,
+)
+from src.api.utils import EventSequencer, TokenChunkBuffer
 from src.core.security import get_current_user
 from src.core.config import settings
 from src.services.retrieval_service import (
@@ -276,7 +289,7 @@ async def invoke_chat_endpoint(
         ChatMessageCreate(
             role="assistant",
             content="",
-            status="streaming",
+            status="pending",
         ),
         current_user,
     )
@@ -329,14 +342,89 @@ async def invoke_chat_endpoint(
                 retrieval_err,
             )
 
+    # ── Helper: persist an event (best-effort, never breaks stream) ──
+    _log = logging.getLogger(__name__)
+    _msg_id = assistant_message.message_id
+    _pending_events: list = []  # accumulate before periodic flush
+
+    async def _persist_event(
+        seq: int,
+        event_type: str,
+        content: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Queue an event row. Flushed periodically or on completion."""
+        try:
+            await create_message_event(
+                db,
+                message_id=_msg_id,
+                seq=seq,
+                event_type=event_type,
+                content=content,
+                metadata=metadata,
+            )
+            _pending_events.append(seq)
+            # Flush every 5 events to avoid huge unflushed batches
+            if len(_pending_events) >= 5:
+                await db.flush()
+                _pending_events.clear()
+        except Exception:
+            _log.warning(
+                "Failed to persist event seq=%d for message %s",
+                seq,
+                _msg_id,
+                exc_info=True,
+            )
+
+    async def _flush_pending() -> None:
+        """Flush any un-flushed event rows."""
+        if _pending_events:
+            try:
+                await db.flush()
+                _pending_events.clear()
+            except Exception:
+                _log.warning(
+                    "Failed to flush pending events for message %s",
+                    _msg_id,
+                    exc_info=True,
+                )
+
     async def stream():
+        # Transition message: pending → streaming
+        try:
+            await update_chat_message(
+                db,
+                chat_id,
+                _msg_id,
+                ChatMessageUpdate(status="streaming"),
+                current_user,
+            )
+        except Exception:
+            _log.warning(
+                "Failed to set message %s to streaming", _msg_id, exc_info=True
+            )
+
+        # Initialize event sequencer and token chunk buffer
+        seq = EventSequencer(start=1)
+        token_buffer = TokenChunkBuffer(seq_start=0)  # seq managed externally
+
+        # ── SSE: started event ──
+        started_seq = seq.next()
+        await _persist_event(
+            started_seq,
+            EVENT_STARTED,
+            metadata={
+                "assistant_message_id": str(_msg_id),
+            },
+        )
+
         yield (
             "data: "
             + json.dumps(
                 {
                     "event": "started",
                     "user_message": user_message.model_dump(mode="json"),
-                    "assistant_message_id": str(assistant_message.message_id),
+                    "assistant_message_id": str(_msg_id),
                 }
             )
             + "\n\n"
@@ -344,7 +432,29 @@ async def invoke_chat_endpoint(
 
         # --- Synthetic thinking events for pre-graph retrieval ---
         if did_pre_retrieval:
+            s1 = seq.next()
+            await _persist_event(
+                s1,
+                EVENT_THINKING,
+                content="Searching your documents…",
+                metadata={
+                    "node": "document_search",
+                    "status": "started",
+                },
+            )
             yield f"data: {json.dumps({'event': 'thinking', 'node': 'document_search', 'status': 'started', 'label': 'Searching your documents…'})}\n\n"
+
+            s2 = seq.next()
+            await _persist_event(
+                s2,
+                EVENT_THINKING,
+                content="Searching your documents…",
+                metadata={
+                    "node": "document_search",
+                    "status": "completed",
+                    "detail": "Found relevant context",
+                },
+            )
             yield f"data: {json.dumps({'event': 'thinking', 'node': 'document_search', 'status': 'completed', 'label': 'Searching your documents…', 'detail': 'Found relevant context'})}\n\n"
 
         try:
@@ -354,6 +464,11 @@ async def invoke_chat_endpoint(
             # Only stream tokens from terminal generation nodes
             _GENERATION_NODES = {"chat_model", "naive_mcq_generator_node"}
 
+            # Helper to persist + flush a token chunk from the buffer
+            async def _flush_token_chunk(chunk_content: str) -> None:
+                s = seq.next()
+                await _persist_event(s, EVENT_TOKEN_CHUNK, content=chunk_content)
+
             async for mode, chunk in graph.astream(
                 input_state,
                 config=config,
@@ -361,9 +476,24 @@ async def invoke_chat_endpoint(
             ):
                 if mode == "custom":
                     # Forward writer() payloads as thinking events
-                    # Extract fields explicitly to avoid key collision
-                    # (chunk already has "event": "node_update")
-                    yield f"data: {json.dumps({'event': 'thinking', 'node': chunk.get('node', ''), 'status': chunk.get('status', ''), 'label': chunk.get('label', ''), 'detail': chunk.get('detail')})}\n\n"
+                    node = chunk.get("node", "")
+                    status_val = chunk.get("status", "")
+                    label = chunk.get("label", "")
+                    detail = chunk.get("detail")
+
+                    s = seq.next()
+                    await _persist_event(
+                        s,
+                        EVENT_THINKING,
+                        content=label,
+                        metadata={
+                            "node": node,
+                            "status": status_val,
+                            "detail": detail,
+                        },
+                    )
+
+                    yield f"data: {json.dumps({'event': 'thinking', 'node': node, 'status': status_val, 'label': label, 'detail': detail})}\n\n"
 
                 elif mode == "messages":
                     # chunk is a tuple: (AIMessageChunk, metadata)
@@ -382,6 +512,15 @@ async def invoke_chat_endpoint(
                     )
                     if reasoning_content:
                         reasoning_text += reasoning_content
+                        s = seq.next()
+                        await _persist_event(
+                            s,
+                            EVENT_REASONING_TOKEN,
+                            content=reasoning_content,
+                            metadata={
+                                "node": node_name,
+                            },
+                        )
                         yield f"data: {json.dumps({'event': 'reasoning_token', 'content': reasoning_content, 'node': node_name})}\n\n"
 
                     # Check for thinking content blocks (Anthropic-style)
@@ -394,6 +533,15 @@ async def invoke_chat_endpoint(
                         thinking_text = block.get("thinking", "")
                         if thinking_text:
                             reasoning_text += thinking_text
+                            s = seq.next()
+                            await _persist_event(
+                                s,
+                                EVENT_REASONING_TOKEN,
+                                content=thinking_text,
+                                metadata={
+                                    "node": node_name,
+                                },
+                            )
                             yield f"data: {json.dumps({'event': 'reasoning_token', 'content': thinking_text, 'node': node_name})}\n\n"
 
                     # Regular content tokens
@@ -410,12 +558,40 @@ async def invoke_chat_endpoint(
 
                     if content:
                         full_text += content
+
+                        # Feed into chunk buffer for persistence
+                        pending = token_buffer.add(content)
+                        if pending:
+                            await _flush_token_chunk(pending.content)
+
+                        # SSE: always emit per-token for live responsiveness
                         yield f"data: {json.dumps({'event': 'token', 'content': content})}\n\n"
+
+                # Periodically check time-based flush for token buffer
+                stale = token_buffer.flush_if_stale()
+                if stale:
+                    await _flush_token_chunk(stale.content)
+
+            # Flush any remaining buffered tokens
+            final_chunk = token_buffer.flush_final()
+            if final_chunk:
+                await _flush_token_chunk(final_chunk.content)
+
+            # Persist done event
+            done_seq = seq.next()
+            await _persist_event(
+                done_seq,
+                EVENT_DONE,
+                metadata={
+                    "content_length": len(full_text),
+                },
+            )
+            await _flush_pending()
 
             final_message = await update_chat_message(
                 db,
                 chat_id,
-                assistant_message.message_id,
+                _msg_id,
                 ChatMessageUpdate(
                     content=full_text,
                     status="completed",
@@ -434,10 +610,37 @@ async def invoke_chat_endpoint(
                 + "\n\n"
             )
         except Exception as exc:
+            # Flush remaining token buffer on error
+            try:
+                err_chunk = token_buffer.flush_final()
+                if err_chunk:
+                    await _flush_token_chunk(err_chunk.content)
+            except Exception:
+                pass
+
+            # Persist error event
+            try:
+                err_seq = seq.next()
+                await _persist_event(
+                    err_seq,
+                    EVENT_ERROR,
+                    content=str(exc),
+                    metadata={
+                        "error_type": type(exc).__name__,
+                    },
+                )
+                await _flush_pending()
+            except Exception:
+                _log.warning(
+                    "Failed to persist error event for message %s",
+                    _msg_id,
+                    exc_info=True,
+                )
+
             await update_chat_message(
                 db,
                 chat_id,
-                assistant_message.message_id,
+                _msg_id,
                 ChatMessageUpdate(
                     status="failed",
                     error={"message": str(exc)},
@@ -450,4 +653,120 @@ async def invoke_chat_endpoint(
         stream(),
         media_type="text/event-stream",
         headers={"X-Thread-ID": str(chat_id)},
+    )
+
+
+# ==========================================================================
+# Event replay / resume
+# ==========================================================================
+
+
+def _event_to_sse_line(event: dict) -> str:
+    """Convert a stored event dict into an SSE-compatible data payload.
+
+    Maps persisted event_type + content/metadata back into the same SSE
+    shape that the live invoke endpoint emits, so the client can use the
+    same handler pipeline for both live and replayed events.
+    """
+    etype = event.get("event_type", "")
+    content = event.get("content")
+    meta = event.get("metadata") or {}
+
+    if etype == EVENT_STARTED:
+        return json.dumps(
+            {
+                "event": "started",
+                "assistant_message_id": meta.get("assistant_message_id", ""),
+                # user_message is not stored on the event — client already has it
+            }
+        )
+    elif etype == EVENT_THINKING:
+        return json.dumps(
+            {
+                "event": "thinking",
+                "node": meta.get("node", ""),
+                "status": meta.get("status", ""),
+                "label": content or "",
+                "detail": meta.get("detail"),
+            }
+        )
+    elif etype == EVENT_TOKEN_CHUNK:
+        return json.dumps({"event": "token", "content": content or ""})
+    elif etype == EVENT_REASONING_TOKEN:
+        return json.dumps(
+            {
+                "event": "reasoning_token",
+                "content": content or "",
+                "node": meta.get("node"),
+            }
+        )
+    elif etype == EVENT_DONE:
+        return json.dumps({"event": "done"})
+    elif etype == EVENT_ERROR:
+        return json.dumps({"event": "error", "detail": content or ""})
+    else:
+        # Unknown/future event types — pass through generically
+        return json.dumps({"event": etype, "content": content, "metadata": meta})
+
+
+@router.get(
+    "/{chat_id}/messages/{message_id}/events",
+    name="replay message events",
+    status_code=status.HTTP_200_OK,
+)
+async def replay_message_events_endpoint(
+    chat_id: uuid.UUID,
+    message_id: uuid.UUID,
+    after_seq: int = Query(0, ge=0, description="Resume from this seq (exclusive)"),
+    db: AsyncSession = Depends(get_db),
+    current_user: AuthResponse = Depends(get_current_user),
+):
+    """Replay persisted events for an assistant message.
+
+    - **Completed/failed messages**: Returns all events as a JSON response
+      (``ChatMessageEventReplayResponse``).
+    - **Streaming/pending messages**: Returns an SSE ``StreamingResponse``
+      that first emits all stored events, then polls for new events every
+      500 ms until the message reaches a terminal state.
+
+    The client can pass ``after_seq`` (from a previous ``last_seq``) to
+    resume without replaying already-received events.
+    """
+    # Fetch initial batch
+    replay = await list_message_events(
+        db, chat_id, message_id, current_user, after_seq=after_seq
+    )
+
+    # Completed message → return fast JSON response
+    if replay.is_complete:
+        return replay
+
+    # In-progress message → SSE live tail
+    async def _live_tail():
+        # Emit stored events first
+        for ev in replay.events:
+            line = _event_to_sse_line(ev.model_dump(mode="json"))
+            yield f"data: {line}\n\n"
+
+        last_seen = replay.last_seq
+
+        # Poll for new events until message completes
+        while True:
+            await asyncio.sleep(0.5)
+            batch = await list_message_events(
+                db, chat_id, message_id, current_user, after_seq=last_seen
+            )
+            for ev in batch.events:
+                line = _event_to_sse_line(ev.model_dump(mode="json"))
+                yield f"data: {line}\n\n"
+
+            if batch.last_seq > last_seen:
+                last_seen = batch.last_seq
+
+            if batch.is_complete:
+                break
+
+    return StreamingResponse(
+        _live_tail(),
+        media_type="text/event-stream",
     )

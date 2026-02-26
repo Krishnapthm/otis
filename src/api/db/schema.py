@@ -304,6 +304,38 @@ class ChatMessageResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Message Event Schemas ────────────────────────────────────────────────────
+
+
+class ChatMessageEventResponse(BaseModel):
+    """Single persisted streaming event."""
+
+    event_id: UUID4
+    message_id: UUID4
+    seq: int
+    event_type: str
+    content: Optional[str] = None
+    metadata: Optional[dict] = None
+    created_at: datetime.datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatMessageEventReplayResponse(BaseModel):
+    """Batch of events for replay, with completion flag."""
+
+    events: List[ChatMessageEventResponse]
+    is_complete: bool = Field(
+        description="True when the parent message has reached a terminal state (completed/failed)"
+    )
+    last_seq: int = Field(
+        description="Highest seq returned; client passes this as after_seq to resume"
+    )
+
+
+# ── Invoke / Streaming ──────────────────────────────────────────────────────
+
+
 class ChatInvokeRequest(BaseModel):
     message: str
     doc_ids: Optional[List[uuid.UUID]] = None

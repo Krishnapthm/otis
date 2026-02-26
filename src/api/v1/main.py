@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,8 +9,12 @@ from psycopg_pool import AsyncConnectionPool
 
 from src.agents.chat_agent import chat_builder
 from src.agents.graph import graph_builder
+from src.api.crud import mark_stale_messages_failed
+from src.api.db.models.session import async_session_maker
 from src.api.v1.routers import auth, embeddings, mcqs, docs, projects, agent, chat
 from src.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -33,6 +38,19 @@ async def lifespan(app: FastAPI):
     app.state.checkpointer = checkpointer
     app.state.compiled_graph = graph_builder.compile(checkpointer=checkpointer)
     app.state.compiled_chat_graph = chat_builder.compile(checkpointer=checkpointer)
+
+    # ── Startup cleanup: mark stale pending/streaming messages as failed ──
+    try:
+        async with async_session_maker() as db:
+            count = await mark_stale_messages_failed(db)
+            if count:
+                logger.info(
+                    "Startup cleanup: marked %d stale message(s) as failed", count
+                )
+    except Exception:
+        logger.warning(
+            "Startup cleanup failed — stale messages may remain", exc_info=True
+        )
 
     try:
         yield
