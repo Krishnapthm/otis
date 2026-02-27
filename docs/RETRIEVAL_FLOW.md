@@ -19,7 +19,7 @@ This approach gives the LLM focused, topically coherent context without requirin
 
 ## Architecture Diagram
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DOCUMENT UPLOAD                              │
 │                                                                     │
@@ -86,11 +86,11 @@ This approach gives the LLM focused, topically coherent context without requirin
 │            │  │  }                      │     │                     │
 │            │  │  query augmented with   │     │                     │
 │            │  │  concept summaries      │     │                     │
-│            │  │  k=15                   │     │                     │
+│            │  │  k=20                   │     │                     │
 │            │  └──────────┬──────────────┘     │                     │
 │            │             │                     │                     │
 │            │             ▼                     │                     │
-│            │    deduplicate + cap at 15        │                     │
+│            │    deduplicate + cap at 20        │                     │
 │            └──────────────┬───────────────────┘                     │
 │                           │                                         │
 │                           ▼                                         │
@@ -149,7 +149,7 @@ Chunk metadata contains the standard fields — no concept tags are stored on ch
 
 Concept awareness is achieved at query time via the `document_concepts` table (Layer 1), not via chunk metadata filtering.
 
-```
+```text
 
 ---
 
@@ -187,7 +187,7 @@ A third function, `classify_chunks_to_concepts()`, exists in the module but is *
 |---------------------------|---------|----------------------------------------|
 | `CONCEPT_TOP_K`           | 3       | Max concepts to match in Layer 1       |
 | `CONCEPT_SCORE_THRESHOLD` | 0.3     | Min cosine similarity for concept match|
-| `MAX_CHUNKS`              | 15      | Total cap on retrieved chunks          |
+| `MAX_CHUNKS`              | 20      | Total cap on retrieved chunks          |
 
 ### 3. Embedding Pipeline Integration
 
@@ -234,7 +234,7 @@ Two insertion points in the existing flow:
 10. ★ NEW: store_concepts() → embeds concept summaries → upserts to document_concepts
 11. Document marked as is_embedded=True, status=ready
 
-```
+```text
 
 ### Chat → Retrieve → Respond
 
@@ -262,7 +262,7 @@ Two insertion points in the existing flow:
 5. Chat graph runs: guardrail → chat_model (existing logic, unchanged)
 6. SSE stream response to frontend (existing logic, unchanged)
 
-```
+```text
 
 ---
 
@@ -297,7 +297,7 @@ The retrieval quality can be tuned by adjusting constants in `src/services/retri
 
 - **`CONCEPT_TOP_K`** — More concepts = broader recall, less precision. Start with 3.
 - **`CONCEPT_SCORE_THRESHOLD`** — Lower threshold = more concepts pass, risking noise. 0.3 is conservative.
-- **`MAX_CHUNKS`** — Hard cap on total context size. 15 chunks ≈ ~12k chars ≈ ~3k tokens.
+- **`MAX_CHUNKS`** — Hard cap on total context size. 20 chunks ≈ ~16k chars ≈ ~4k tokens.
 
 ---
 
