@@ -1,12 +1,14 @@
 from importlib import metadata
 from pathlib import Path
 from typing import List
-import docling
+import pymupdf4llm
 from langchain_ollama import OllamaEmbeddings
 from langchain_postgres import PGVector, PGVectorStore, PGEngine
 from langchain_core.documents import Document
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.pipeline_options import PdfPipelineOptions
+
+# import docling
+# from docling.document_converter import DocumentConverter, PdfFormatOption
+# from docling.datamodel.pipeline_options import PdfPipelineOptions
 from numpy import format_float_positional
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
@@ -22,13 +24,13 @@ from src.api.db.schema import EmbeddingResponse
 source = Path("/home/krishna/projects/otis/experiments/uploads")
 headers_to_split = [("#", "heading"), ("##", "section"), ("###", "subsection")]
 
-pipeline_options = PdfPipelineOptions()
-pipeline_options.do_ocr = False
-pipeline_options.do_table_structure = False
+# pipeline_options = PdfPipelineOptions()
+# pipeline_options.do_ocr = False
+# pipeline_options.do_table_structure = False
 
-converter = DocumentConverter(
-    format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_options)}
-)
+# converter = DocumentConverter(
+#     format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_options)}
+# )
 
 recursive_splitter = RecursiveCharacterTextSplitter(
     chunk_size=800, chunk_overlap=100, add_start_index=True
@@ -67,6 +69,10 @@ retriever = vector_store.as_retriever(
 )
 
 
+def extract_pdf_markdown(file_path: str) -> str:
+    return pymupdf4llm.to_markdown(file_path)
+
+
 async def embed_docs(files: List[str], collection_name: str):
 
     docling_docs: List[EmbeddingResponse] = []
@@ -74,8 +80,7 @@ async def embed_docs(files: List[str], collection_name: str):
     vector_store = await create_vector_store(collection_name)
 
     for file in files:
-        result = converter.convert(file)
-        md = result.document.export_to_markdown()
+        md = extract_pdf_markdown(str(file))
 
         header_docs = markdown_splitter.split_text(md)
 
@@ -118,8 +123,7 @@ if __name__ == "__main__":
     docling_docs: List[Document] = []
 
     for file in source.rglob("*.pdf"):
-        result = converter.convert(file)
-        md = result.document.export_to_markdown()
+        md = extract_pdf_markdown(str(file))
 
         header_docs = markdown_splitter.split_text(md)
 

@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
+import pymupdf4llm
 from langchain_core.documents import Document
 from langchain_ollama import OllamaEmbeddings
 from langchain_postgres import PGVector
@@ -25,8 +26,8 @@ from langchain_text_splitters import (
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from docling.datamodel.pipeline_options import PdfPipelineOptions
-from docling.document_converter import DocumentConverter, PdfFormatOption
+# from docling.datamodel.pipeline_options import PdfPipelineOptions
+# from docling.document_converter import DocumentConverter, PdfFormatOption
 from src.api.db.models import Documents, LangchainPgCollection, UserVectorstore
 from src.services.concept_service import (
     extract_concepts,
@@ -41,13 +42,13 @@ logger = logging.getLogger(__name__)
 # Document processing configuration
 headers_to_split = [("#", "heading"), ("##", "section"), ("###", "subsection")]
 
-pipeline_options = PdfPipelineOptions()
-pipeline_options.do_ocr = False
-pipeline_options.do_table_structure = False
+# pipeline_options = PdfPipelineOptions()
+# pipeline_options.do_ocr = False
+# pipeline_options.do_table_structure = False
 
-converter = DocumentConverter(
-    format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_options)}
-)
+# converter = DocumentConverter(
+#     format_options={"pdf": PdfFormatOption(pipeline_options=pipeline_options)}
+# )
 
 recursive_splitter = RecursiveCharacterTextSplitter(
     chunk_size=800, chunk_overlap=100, add_start_index=True
@@ -56,6 +57,10 @@ recursive_splitter = RecursiveCharacterTextSplitter(
 markdown_splitter = MarkdownHeaderTextSplitter(
     headers_to_split_on=headers_to_split, strip_headers=False
 )
+
+
+def extract_pdf_markdown(file_path: str) -> str:
+    return pymupdf4llm.to_markdown(file_path)
 
 
 def process_user_embeddings(
@@ -130,8 +135,7 @@ def process_user_embeddings(
                     continue
 
                 # Convert document to markdown
-                result = converter.convert(file_path)
-                md = result.document.export_to_markdown()
+                md = extract_pdf_markdown(file_path)
 
                 # Compute content hash using normalized text
                 from src.core.hashing import compute_content_hash

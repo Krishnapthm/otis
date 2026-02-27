@@ -3,19 +3,31 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.db.models.session import get_db
 from src.api.crud import create_mcq, get_all_mcqs, get_mcq
-from src.api.db.schema import CreateMCQ, ReadMCQ
+from src.api.db.schema import AuthResponse, CreateMCQ, ReadMCQ
 from typing import List
 import uuid
+from src.core.security import get_current_user
 
 router = APIRouter(prefix="/mcqs")
 
-@router.post("/", name='create MCQ', response_model = ReadMCQ, status_code = status.HTTP_201_CREATED)
-async def create_mcq_endpoint(mcqs: CreateMCQ, db: AsyncSession = Depends(get_db)):
+
+@router.post(
+    "/", name="create MCQ", response_model=ReadMCQ, status_code=status.HTTP_201_CREATED
+)
+async def create_mcq_endpoint(
+    mcqs: CreateMCQ,
+    db: AsyncSession = Depends(get_db),
+    _current_user: AuthResponse = Depends(get_current_user),
+):
     new_mcq = await create_mcq(db, mcqs)
     return new_mcq
 
-@router.get("/", name='list mcq', response_model=List[ReadMCQ])
-async def list_mcq(db: AsyncSession = Depends(get_db))-> List[ReadMCQ]:
+
+@router.get("/", name="list mcq", response_model=List[ReadMCQ])
+async def list_mcq(
+    db: AsyncSession = Depends(get_db),
+    _current_user: AuthResponse = Depends(get_current_user),
+) -> List[ReadMCQ]:
     mcqs = await get_all_mcqs(db)
     return mcqs
 
@@ -25,8 +37,13 @@ async def list_mcq(db: AsyncSession = Depends(get_db))-> List[ReadMCQ]:
 #     mcqs = await get_mcq(db, project_id)
 #     return mcqs
 
-@router.get("/download/{id}", name='donwload mcq')
-async def download_mcq(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+
+@router.get("/download/{id}", name="donwload mcq")
+async def download_mcq(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: AuthResponse = Depends(get_current_user),
+):
     mcqs = await get_mcq(db, id)
 
     if not mcqs:
@@ -41,6 +58,3 @@ async def download_mcq(id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="mcqs_{id}.json"'},
     )
-
-
-

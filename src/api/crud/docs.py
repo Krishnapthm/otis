@@ -25,7 +25,8 @@ from src.services.file_handling import (
     zip_files,
 )
 from sqlalchemy.orm import selectinload
-from sqlalchemy import and_, insert, exists
+from sqlalchemy import and_, insert, exists, delete
+from src.api.db.models import UserVectorstore, LangchainPgEmbedding
 
 
 async def upload_new_doc(
@@ -36,7 +37,7 @@ async def upload_new_doc(
 ) -> List[DocResponse]:
     """
     Upload documents for a user with file-hash deduplication.
-    
+
     Dedup Logic:
     1. Check file_hash - if exists, return existing doc (exact duplicate)
     2. Check filename - if exists, return 409 Conflict
@@ -44,7 +45,7 @@ async def upload_new_doc(
     """
     results = []
     docs_to_link = []  # For project linking
-    
+
     for doc in docs:
         # Level 1: Exact file duplicate check via file_hash
         if doc.file_hash:
@@ -60,7 +61,7 @@ async def upload_new_doc(
                 # Exact duplicate found - delete staging file and return error
                 if os.path.exists(doc.file_path):
                     os.unlink(doc.file_path)
-                
+
                 # Return 409 with existing document info so UI can show it
                 raise HTTPException(
                     status_code=409,
@@ -77,7 +78,7 @@ async def upload_new_doc(
                         "hint": "The content of this file matches an existing document",
                     },
                 )
-        
+
         # Level 2: Filename duplicate check (user experience - avoid confusion)
         filename_check = await db.execute(
             select(Documents.filename).where(
@@ -100,13 +101,13 @@ async def upload_new_doc(
                     "hint": "Rename the file or delete the existing document",
                 },
             )
-        
+
         # Move file from staging to final location
         # doc.file_path is staging path, we move to UPLOAD_DIR/filename
         upload_dir = os.environ.get("UPLOAD_DIR", "/app/uploads")
         final_path = os.path.join(upload_dir, doc.filename)
         shutil.move(doc.file_path, final_path)
-        
+
         # Create new document with pending status
         new_doc = Documents(
             user_id=current_user.user_id,
@@ -120,7 +121,7 @@ async def upload_new_doc(
         )
         db.add(new_doc)
         await db.flush()
-        
+
         results.append(
             DocResponse(
                 doc_id=new_doc.doc_id,
@@ -141,7 +142,7 @@ async def upload_new_doc(
         )
         if project_id:
             docs_to_link.append(new_doc.doc_id)
-    
+
     # Verify project ownership and link documents
     if project_id and docs_to_link:
         result = await db.execute(
@@ -155,9 +156,10 @@ async def upload_new_doc(
         project = result.scalar_one_or_none()
         if not project:
             raise HTTPException(
-                status_code=404, detail="Project does not exist or you do not have access"
+                status_code=404,
+                detail="Project does not exist or you do not have access",
             )
-        
+
         # Link docs to project (skip if already linked)
         for doc_id in docs_to_link:
             existing_link = await db.execute(
@@ -172,10 +174,9 @@ async def upload_new_doc(
                 await db.execute(
                     insert(t_project_docs).values(project_id=project_id, doc_id=doc_id)
                 )
-    
+
     await db.commit()
     return results
-
 
 
 async def link_docs_to_project(
@@ -186,7 +187,7 @@ async def link_docs_to_project(
 ) -> dict:
     """
     Link existing documents to a project.
-    
+
     Idempotent: if a document is already linked, it won't be re-linked.
     Only links documents that belong to the user.
     """
@@ -229,12 +230,14 @@ async def link_docs_to_project(
     for doc in user_docs:
         # Check if already linked
         existing = await db.execute(
-            select(exists().where(
-                and_(
-                    t_project_docs.c.project_id == project_id,
-                    t_project_docs.c.doc_id == doc.doc_id,
+            select(
+                exists().where(
+                    and_(
+                        t_project_docs.c.project_id == project_id,
+                        t_project_docs.c.doc_id == doc.doc_id,
+                    )
                 )
-            ))
+            )
         )
         already_linked = existing.scalar()
 
@@ -268,10 +271,7 @@ async def get_user_docs(
     Get all documents owned by a user (regardless of project).
     """
     result = await db.execute(
-        select(Documents)
-        .where(Documents.user_id == user_id)
-        .offset(skip)
-        .limit(limit)
+        select(Documents).where(Documents.user_id == user_id).offset(skip).limit(limit)
     )
     docs = result.scalars().all()
 
@@ -317,8 +317,7 @@ async def get_user_doc_by_id(
 
     if not document:
         raise HTTPException(
-            status_code=404, 
-            detail="Document not found or you do not have access"
+            status_code=404, detail="Document not found or you do not have access"
         )
 
     return DocResponse(
@@ -423,13 +422,13 @@ async def delete_doc(
 ) -> dict:
     """
     Delete documents owned by the user.
-    
+
     Note: This deletes the document entirely, including from all projects
     and the vectorstore metadata. The actual embeddings will be orphaned
     but can be cleaned up separately.
     """
     del_docs: List[Documents] = []
-    
+
     for di in did:
         # Verify document belongs to user
         result = await db.execute(
@@ -451,17 +450,37 @@ async def delete_doc(
             detail="Documents do not exist or you do not have permission",
         )
 
+    vectorstore = (
+        await db.execute(
+            select(UserVectorstore).where(UserVectorstore.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+
     deleted_names = []
     for del_doc in del_docs:
         del_doc_name = del_doc.filename
 
         if await delete_file(del_doc_name):
+            if vectorstore and vectorstore.collection_id:
+                await db.execute(
+                    delete(LangchainPgEmbedding).where(
+                        and_(
+                            LangchainPgEmbedding.collection_id
+                            == vectorstore.collection_id,
+                            LangchainPgEmbedding.cmetadata["document_id"].astext
+                            == str(del_doc.doc_id),
+                        )
+                    )
+                )
             await db.delete(del_doc)
             deleted_names.append(del_doc_name)
 
     await db.commit()
 
-    return {"message": f"Deleted {len(deleted_names)} documents", "deleted": deleted_names}
+    return {
+        "message": f"Deleted {len(deleted_names)} documents",
+        "deleted": deleted_names,
+    }
 
 
 async def download_user_doc(
@@ -526,9 +545,7 @@ async def download_doc(
 
 
 async def doc_thumbnail(
-    doc_id: uuid.UUID, 
-    user_id: uuid.UUID,
-    db: AsyncSession
+    doc_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
 ) -> FileResponse:
     """
     Get thumbnail for a document.
