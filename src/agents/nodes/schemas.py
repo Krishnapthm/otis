@@ -26,9 +26,5 @@ class OptionsOutput(BaseModel):
     explanation: str = ""
 
 
-class DistractorsOutput(BaseModel):
-    distractors: List[str] = Field(default_factory=list)
-
-
 class ValidatorOutput(ValidationResult):
     pass

@@ -27,14 +27,11 @@ flowchart TD
         subgraph SUBGRAPH["Per-Question MCQ Subgraph (isolated state per Send)"]
             STEM["✏️ Stem Generator"]
             OPTIONS["☑️ Options Generator\nreturns options + correct_answer + explanation"]
-            DISTRACTORS["❌ Distractor Generator"]
-            VALIDATOR["✅ Validator\nchecks stem/options/distractors/single answer/Bloom\n(explanation NOT scored)"]
+            VALIDATOR["✅ Validator\nchecks stem/options/single answer/Bloom/factual grounding\n(explanation NOT scored)"]
             FINALIZE_DRAFT["📄 Finalize Draft\nMCQDraft(question_index, stem, options, answer, explanation)"]
 
             STEM --> OPTIONS
-            STEM --> DISTRACTORS
             OPTIONS --> VALIDATOR
-            DISTRACTORS --> VALIDATOR
             VALIDATOR -->|pass| FINALIZE_DRAFT
             VALIDATOR -->|retry_count < max| STEM
             VALIDATOR -->|retry_count >= max| FINALIZE_DRAFT

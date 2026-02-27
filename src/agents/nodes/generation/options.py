@@ -2,7 +2,7 @@ from langgraph.config import get_stream_writer
 
 from src.agents.nodes.schemas import OptionsOutput
 from src.agents.prompts import PROMPT_REGISTRY
-from src.agents.utils.helpers import build_retrieved_context
+from src.agents.utils.helpers import build_plan_context
 from src.agents.utils.state import QuestionSubgraphState
 
 
@@ -19,11 +19,9 @@ async def options_generator_node(state: QuestionSubgraphState, options_llm) -> d
 
     prompt = await PROMPT_REGISTRY["options_generation"].ainvoke(
         {
-            "plan": state["plan"].model_dump_json(),
+            "plan": build_plan_context(state["plan"], include_concepts=False),
             "stem": state.get("stem", ""),
-            "retrieved_context": build_retrieved_context(
-                state.get("retrieved_chunks") or []
-            ),
+            "distractor_strategy": state["plan"].distractor_strategy,
         }
     )
     result = await options_llm.with_structured_output(OptionsOutput).ainvoke(prompt)

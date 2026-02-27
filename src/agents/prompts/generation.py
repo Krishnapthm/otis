@@ -24,29 +24,18 @@ Plan:
 Stem:
 {stem}
 
-Retrieved context:
-{retrieved_context}
+Distractor strategy:
+{distractor_strategy}
+
+Requirements:
+- exactly one option must be fully correct
+- the other three options must be plausible but clearly incorrect
+- avoid overlap/near-duplicates across options
+- keep option lengths balanced
 
 Return JSON with keys:
 - options: list[str] (length 4)
 - correct_answer: one of A|B|C|D
 - explanation: short explanation for why the correct option is correct
-"""
-)
-
-distractor_generation_prompt = PromptTemplate.from_template(
-    """
-Generate 3 plausible distractors for this MCQ stem.
-
-Plan:
-{plan}
-
-Stem:
-{stem}
-
-Retrieved context:
-{retrieved_context}
-
-Return only a JSON list of 3 strings.
 """
 )

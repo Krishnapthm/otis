@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Set
 
-from src.agents.utils.state import State
+from src.agents.utils.state import State, TestGenerationPlan
 
 
 def resolve_user_prompt(state: State) -> str:
@@ -30,12 +31,25 @@ def build_retrieved_context(retrieved_chunks: List[Dict[str, Any]]) -> str:
     sections: List[str] = []
     for index, chunk in enumerate(retrieved_chunks, 1):
         file_name = chunk.get("metadata", {}).get("file_name", "unknown")
-        sections.append(
-            f"[{index}] doc_id={chunk.get('doc_id')} "
-            f"chunk_id={chunk.get('chunk_id')} source={file_name}\n"
-            f"{chunk.get('content', '')}"
-        )
+        sections.append(f"[{index}] source={file_name}\n" f"{chunk.get('content', '')}")
     return "\n\n".join(sections)
+
+
+def build_plan_context(plan: TestGenerationPlan, *, include_concepts: bool) -> str:
+    """Return a compact JSON plan payload for LLM prompts."""
+    payload = {
+        "topic": plan.topic,
+        "difficulty": plan.difficulty,
+        "blooms_level": plan.blooms_level,
+        "stem_guidance": plan.stem_guidance,
+        "distractor_strategy": plan.distractor_strategy,
+    }
+    if include_concepts:
+        payload["concepts"] = [
+            {"name": concept.name, "summary": concept.summary}
+            for concept in plan.concepts
+        ]
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def deduplicate_queries(

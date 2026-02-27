@@ -46,11 +46,6 @@ options_llm = AzureChatOpenAI(
     api_version="2024-12-01-preview",
 )
 
-distractors_llm = AzureChatOpenAI(
-    azure_deployment="gpt-4.1-nano",
-    api_version="2024-12-01-preview",
-)
-
 validator_llm = AzureChatOpenAI(
     azure_deployment="gpt-4.1-nano",
     api_version="2024-12-01-preview",

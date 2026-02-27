@@ -2,6 +2,7 @@ import json
 
 from src.agents.nodes.schemas import ValidatorOutput
 from src.agents.prompts import PROMPT_REGISTRY
+from src.agents.utils.helpers import build_plan_context, build_retrieved_context
 from src.agents.utils.state import QuestionSubgraphState
 
 
@@ -10,12 +11,14 @@ async def validator_node(state: QuestionSubgraphState, validator_llm) -> dict:
         "stem": state.get("stem"),
         "options": state.get("options") or [],
         "correct_answer": state.get("correct_answer"),
-        "distractors": state.get("distractors") or [],
     }
     prompt = await PROMPT_REGISTRY["validator"].ainvoke(
         {
-            "plan": state["plan"].model_dump_json(),
+            "plan": build_plan_context(state["plan"], include_concepts=False),
             "draft": json.dumps(draft_payload, ensure_ascii=False),
+            "retrieved_context": build_retrieved_context(
+                state.get("retrieved_chunks") or []
+            ),
         }
     )
     validation = await validator_llm.with_structured_output(ValidatorOutput).ainvoke(

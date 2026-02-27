@@ -40,9 +40,7 @@ Each question runs in an isolated subgraph instance. This prevents shared-state 
 flowchart TD
         START --> STEM
         STEM --> OPTIONS
-        STEM --> DISTRACTORS
         OPTIONS --> VALIDATOR
-        DISTRACTORS --> VALIDATOR
         VALIDATOR -->|pass| FINALIZE
         VALIDATOR -->|retry_count < max| STEM
         VALIDATOR -->|retry_count >= max| FINALIZE
@@ -95,7 +93,6 @@ Primary fields (from `src/agents/utils/state.py`):
 - `stem`
 - `options`
 - `correct_answer`
-- `distractors`
 - `explanation`
 - `retry_count`
 - `validation_passed`
@@ -109,7 +106,6 @@ Primary fields (from `src/agents/utils/state.py`):
   - `stem`
   - `options`
   - `answer`
-  - `distractors`
   - `explanation`
 - Final: `FinalMCQ`
   - `question_index`
@@ -145,7 +141,6 @@ All new modular nodes default to `gpt-4.1-nano` placeholders in `src/agents/util
 - `retrieval_llm`
 - `stem_llm`
 - `options_llm`
-- `distractors_llm`
 - `validator_llm`
 - `chat_no_tools_llm`
 
@@ -162,6 +157,13 @@ Prompt modules are split by concern in `src/agents/prompts`:
 - `chat.py`
 
 Registry entrypoint: `src/agents/prompts/__init__.py`.
+
+## Context Engineering Notes
+
+- `stem_generator` gets compact plan context + retrieved chunks.
+- `options_generator` gets compact plan context + stem + `distractor_strategy` (no full retrieved chunk dump).
+- `validator` gets compact plan context + draft + retrieved chunks for factual-grounding checks.
+- Plan payloads intentionally exclude retrieval-only fields like `retrieval_queries` to reduce token overhead.
 
 ## Observability
 

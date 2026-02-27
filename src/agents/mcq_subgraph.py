@@ -1,13 +1,11 @@
 from langgraph.graph import END, START, StateGraph
 
 from src.agents.nodes.generation import (
-    distractor_generator_node,
     options_generator_node,
     stem_generator_node,
 )
 from src.agents.nodes.validator import validator_node
 from src.agents.utils.llm_config import (
-    distractors_llm,
     options_llm,
     stem_llm,
     validator_llm,
@@ -23,10 +21,6 @@ async def stem_subgraph_node(state: QuestionSubgraphState) -> dict:
 
 async def options_subgraph_node(state: QuestionSubgraphState) -> dict:
     return await options_generator_node(state, options_llm)
-
-
-async def distractor_subgraph_node(state: QuestionSubgraphState) -> dict:
-    return await distractor_generator_node(state, distractors_llm)
 
 
 async def validator_subgraph_node(state: QuestionSubgraphState) -> dict:
@@ -46,7 +40,6 @@ def _finalize_draft_node(state: QuestionSubgraphState) -> dict:
         question_index=state["question_index"],
         stem=state.get("stem", ""),
         options=state.get("options") or [],
-        distractors=state.get("distractors") or [],
         answer=state.get("correct_answer"),
         explanation=state.get("explanation") or "",
         validation_feedback=state.get("validation_feedback") or None,
@@ -59,15 +52,12 @@ def build_question_subgraph():
 
     graph.add_node("stem_generator", stem_subgraph_node)
     graph.add_node("options_generator", options_subgraph_node)
-    graph.add_node("distractor_generator", distractor_subgraph_node)
     graph.add_node("validator", validator_subgraph_node)
     graph.add_node("finalize_draft", _finalize_draft_node)
 
     graph.add_edge(START, "stem_generator")
     graph.add_edge("stem_generator", "options_generator")
-    graph.add_edge("stem_generator", "distractor_generator")
     graph.add_edge("options_generator", "validator")
-    graph.add_edge("distractor_generator", "validator")
 
     graph.add_conditional_edges(
         "validator",

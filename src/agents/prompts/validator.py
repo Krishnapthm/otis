@@ -10,11 +10,15 @@ Plan:
 Draft:
 {draft}
 
+Retrieved context:
+{retrieved_context}
+
 Check only:
 - stem clarity
 - distractor plausibility
 - single correct answer
 - bloom alignment
+- factual grounding against retrieved context
 
 Do not evaluate explanation quality.
 

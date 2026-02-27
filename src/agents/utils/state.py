@@ -85,7 +85,6 @@ class MCQDraft(BaseModel):
     question_index: int = Field(default=0)
     stem: Optional[str]
     options: Optional[List[str]]
-    distractors: Optional[List[str]]
     answer: Optional[str]
     explanation: str = ""
     validation_score: Optional[float] = None
@@ -129,7 +128,6 @@ class QuestionSubgraphState(TypedDict, total=False):
     stem: Optional[str]
     options: Optional[List[str]]
     correct_answer: Optional[str]
-    distractors: Optional[List[str]]
     explanation: Optional[str]
     retry_count: int
     validation_passed: bool

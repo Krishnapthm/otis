@@ -54,9 +54,7 @@ File: `src/agents/mcq_subgraph.py`
 flowchart TD
   START --> stem_generator
   stem_generator --> options_generator
-  stem_generator --> distractor_generator
   options_generator --> validator
-  distractor_generator --> validator
   validator -->|pass| finalize_draft
   validator -->|retry_count < max| stem_generator
   validator -->|retry_count >= max| finalize_draft
