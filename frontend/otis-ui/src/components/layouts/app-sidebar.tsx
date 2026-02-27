@@ -136,11 +136,19 @@ export function AppSidebar({ ...props }: AppSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              className="data-[slot=sidebar-menu-button]:p-1.5!"
+              className="w-24 hover:bg-transparent data-[state=open]:bg-transparent active:bg-transparent"
             >
               <Link to="/">
-                <IconInnerShadowTop className="size-5!" />
-                <span className="text-xl font-semibold">Otis</span>
+                <img
+                  src="/otis-light.svg"
+                  alt="Otis"
+                  className="block h-6 w-auto dark:hidden"
+                />
+                <img
+                  src="/otis-dark.svg"
+                  alt="Otis"
+                  className="hidden h-6 w-auto dark:block"
+                />
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

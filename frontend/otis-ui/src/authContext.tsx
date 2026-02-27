@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleLogout = () => {
-    apiLogout();
+    void apiLogout();
     setUser(null);
     refreshUser();
   };

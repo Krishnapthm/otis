@@ -123,7 +123,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider
       attribute="class"
-      defaultTheme="dark"
+      defaultTheme="light"
       enableSystem
       disableTransitionOnChange
     >
