@@ -2,17 +2,19 @@ FROM python:3.12
 
 WORKDIR /app
 
-RUN pip install uv
+COPY --from=ghcr.io/astral-sh/uv:0.10.7 /uv /uvx /bin/
 
-COPY pyproject.toml ./
+# Copy BOTH files
+COPY pyproject.toml uv.lock ./
 
-RUN uv sync  --no-cache
+RUN uv sync --frozen \
+	&& uv run python -c "import PIL"
 
 COPY ./src /app/src
 
-
-RUN  uv pip install docling==2.65.0 --extra-index-url https://download.pytorch.org/whl/cpu
+# Optional GPU path (keep commented unless you need Docling):
+# RUN uv pip install docling==2.65.0 --extra-index-url https://download.pytorch.org/whl/cpu
 
 EXPOSE 8000
 
-CMD [ "uv", "uvicorn", "src.api.v1.main:app", "--host", "0.0.0.0", "--port", "8000" ]
+CMD ["uv", "run", "uvicorn", "src.api.v1.main:app", "--host", "0.0.0.0", "--port", "8000"]

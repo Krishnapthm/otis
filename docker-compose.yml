@@ -2,15 +2,15 @@ services:
   db:
     image: pgvector/pgvector:pg17
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=otis
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d otis"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -18,8 +18,8 @@ services:
   pgadmin:
     image: dpage/pgadmin4
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
       - "5050:80"
     depends_on:
@@ -42,6 +42,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      network: host
     container_name: otis-api
     ports:
       - "8000:8000"
@@ -90,18 +91,6 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
-
-  # agent:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.agent
-  #   ports:
-  #     - "8132:8132"
-  #   volumes:
-  #     - ./agent:/app
-  #   env_file:
-  #     - .env
-  #   command: uv run langgraph dev --host 0.0.0.0 --port 8132
 
 volumes:
   ollama_data:
