@@ -20,7 +20,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from langchain_core.documents import Document
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -68,14 +68,13 @@ class ChunkConceptMappings(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _get_concept_llm() -> AzureChatOpenAI:
+def _get_concept_llm() -> ChatOpenAI:
     """
-    Returns a low-cost Azure OpenAI model for concept extraction.
+    Returns a low-cost OpenAI model for concept extraction.
     Uses gpt-4.1-nano by default; falls back to gpt-4o-mini via env var.
     """
-    return AzureChatOpenAI(
-        azure_deployment=os.getenv("CONCEPT_LLM_DEPLOYMENT", "gpt-4.1-nano"),
-        api_version=os.getenv("CONCEPT_LLM_API_VERSION", "2024-12-01-preview"),
+    return ChatOpenAI(
+        model=os.getenv("CONCEPT_LLM_DEPLOYMENT", "gpt-4.1-nano"),
         temperature=0.0,
         max_completion_tokens=1000,
     )

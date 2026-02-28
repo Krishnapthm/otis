@@ -16,7 +16,7 @@ This file is kept for reference and will be removed in a future cleanup.
 Use ``src/agents/chat_agent.py`` instead.
 """
 
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
 from src.agents.utils.nodes import AgentNodes
@@ -32,9 +32,8 @@ def create_agent_builder() -> StateGraph:
         retrieval service (``src/services/retrieval_service.py``).
     """
 
-    llm = AzureChatOpenAI(
-        azure_deployment="gpt-4o-mini",
-        api_version="2024-12-01-preview",
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
         temperature=0.2,
         top_p=0.9,
         max_completion_tokens=500,

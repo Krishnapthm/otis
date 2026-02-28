@@ -11,7 +11,6 @@ import os
 import zipfile
 import io
 import fitz
-from PIL import Image
 
 ALLOWED_EXTENSIONS = {
     "pdf": "application/pdf",
@@ -30,11 +29,11 @@ THUMBNAIL_DIR = os.environ.get("THUMBNAIL_DIR", "/app/thumbnails")
 async def store_file(files: List[UploadFile] = File(...)) -> List[DocBase]:
     """
     Store uploaded files in staging directory with streaming hash computation.
-    
+
     Files are stored in a temp staging area (not final UPLOAD_DIR) so the CRUD
     layer can check for duplicates before finalizing. The CRUD layer is responsible
     for moving files to their final location or deleting them.
-    
+
     Memory-safe: streams file to disk first, then computes hash.
     """
     # Use a staging directory inside UPLOAD_DIR
@@ -52,7 +51,9 @@ async def store_file(files: List[UploadFile] = File(...)) -> List[DocBase]:
             )
 
         # Stream file to temp location (never loads full file into RAM)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}", dir=staging_dir) as tmp:
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=f".{file_ext}", dir=staging_dir
+        ) as tmp:
             shutil.copyfileobj(file.file, tmp)
             tmp_path = tmp.name
 
@@ -85,24 +86,26 @@ async def store_file(files: List[UploadFile] = File(...)) -> List[DocBase]:
 
     return documents
 
-async def delete_file(filename: str)-> bool:
 
-    file_path  = os.path.join(UPLOAD_DIR, filename)
+async def delete_file(filename: str) -> bool:
+
+    file_path = os.path.join(UPLOAD_DIR, filename)
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"{filename} does not exist")
-    
+
     os.remove(file_path)
 
     return True
 
-def download_file(filename: str)-> FileResponse:
 
-    file_path  = os.path.join(UPLOAD_DIR, filename)
+def download_file(filename: str) -> FileResponse:
+
+    file_path = os.path.join(UPLOAD_DIR, filename)
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"{filename} does not exist")
-    
+
     file_ext = filename.split(".")[-1].lower()
     media_type = ALLOWED_EXTENSIONS.get(file_ext, "application/octet-stream")
 
@@ -111,21 +114,25 @@ def download_file(filename: str)-> FileResponse:
         media_type=media_type,
         filename=filename,
     )
+
+
 async def zip_files(filenames: List[str]):
-    
+
     zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+    with zipfile.ZipFile(zip_buffer, "w") as zip_file:
         for filename in filenames:
             file_path = os.path.join(UPLOAD_DIR, filename)
             if os.path.exists(file_path):
                 zip_file.write(file_path, arcname=filename)
-    
+
     zip_buffer.seek(0)
     return StreamingResponse(
         iter([zip_buffer.getvalue()]),
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=documents.zip"}
+        headers={"Content-Disposition": "attachment; filename=documents.zip"},
     )
+
+
 def pdf_thumbnail(pdf_path: str, size: int = 512) -> FileResponse:
     """
     Generate a perfect square thumbnail of the first page of a PDF.
@@ -136,27 +143,27 @@ def pdf_thumbnail(pdf_path: str, size: int = 512) -> FileResponse:
     base = os.path.splitext(os.path.basename(pdf_path))[0]
     thumbnail_path = os.path.join(THUMBNAIL_DIR, f"{base}.png")
 
-    zoom = 2  
-    doc = fitz.open(pdf_path)
-    page = doc.load_page(0)
-    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+    with fitz.open(pdf_path) as doc:
+        page = doc.load_page(0)
 
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        page_rect = page.rect
+        square_side = min(page_rect.width, page_rect.height)
+        clip = fitz.Rect(0, 0, square_side, square_side)
 
-    w, h = img.size
-    square_side = min(w, h) 
-    img = img.crop((0, 0, square_side, square_side))  
+        if size:
+            scale = size / square_side
+        else:
+            scale = 2
 
-    if size:
-        img = img.resize((size, size), Image.LANCZOS)
-
-    img.save(thumbnail_path, "PNG")
+        pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), clip=clip)
+        pix.save(thumbnail_path)
 
     return FileResponse(
         path=thumbnail_path,
         media_type=media_type,
         filename=os.path.basename(thumbnail_path),
     )
+
 
 if __name__ == "__main__":
 

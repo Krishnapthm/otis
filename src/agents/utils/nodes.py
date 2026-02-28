@@ -3,7 +3,7 @@ import uuid
 from typing import Any, Dict, List
 
 from langchain.messages import SystemMessage
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 
 from src.core.config import settings
 from src.agents.utils.prompts import PROMPTS
@@ -33,7 +33,7 @@ from langgraph.types import interrupt
 
 
 class AgentNodes:
-    def __init__(self, llm: AzureChatOpenAI, guardrail_llm: AzureChatOpenAI):
+    def __init__(self, llm: ChatOpenAI, guardrail_llm: ChatOpenAI):
         self.base_llm = llm
         self.llm_overview = self.base_llm.with_structured_output(Overview)
         self.llm_queries = self.base_llm.with_structured_output(SearchQueries)

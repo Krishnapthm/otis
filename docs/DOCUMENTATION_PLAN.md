@@ -68,7 +68,7 @@
 - **Content:** Table of every env var with description, required/optional, default, which service reads it. Source: `.env`, `.env.fastapi`.
 - **Code refs:** `src/core/config.py` (Pydantic `BaseSettings`), `docker-compose.yml` (env section), `src/agents/utils/llm_config.py`, `src/services/retrieval_service.py`, `.env.example`.
 - **Decisions to explain:** Split `.env` / `.env.fastapi` pattern.
-- **✅ RESOLVED:** `.env.example` now exists with all required vars (`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `LANGSMITH_*`, `DB_URL`, `JWT_SECRET_KEY`, `POSTGRES_*`, `PGADMIN_*`, `VITE_API_BASE_URL`). Documentation can reference it directly.
+- **✅ RESOLVED:** `.env.example` now exists with all required vars (`OPENAI_API_KEY`, `LANGSMITH_*`, `DB_URL`, `JWT_SECRET_KEY`, `POSTGRES_*`, `PGADMIN_*`, `VITE_API_BASE_URL`). Documentation can reference it directly.
 
 #### 2.6 Quick Start (Docker)
 

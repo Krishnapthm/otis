@@ -1,4 +1,4 @@
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from typing import Literal, TypedDict, List
@@ -23,9 +23,8 @@ class MCQ(BaseModel):
 
 tools = [Questions]
 
-llm = AzureChatOpenAI(
-    azure_deployment="gpt-4o-mini",
-    api_version="2024-12-01-preview"
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
 )
 url = "http://localhost:8000/v1/mcq/"
 

@@ -678,8 +678,7 @@ Synchronous service called from the RQ embedding worker. Three main functions:
 
 #### `extract_concepts(markdown_text, doc_name?) -> List[Dict[str, str]]`
 
-- **Model:** `AzureChatOpenAI` with deployment `gpt-4.1-nano` (configurable via `CONCEPT_LLM_DEPLOYMENT` env).
-- **API version:** `2024-12-01-preview`.
+- **Model:** `ChatOpenAI` with model `gpt-4.1-nano` (configurable via `CONCEPT_LLM_DEPLOYMENT` env).
 - **Temperature:** 0.0
 - **Max tokens:** 1000
 - **Structured output:** `ExtractedConcepts` Pydantic model (list of `{name, summary}`).

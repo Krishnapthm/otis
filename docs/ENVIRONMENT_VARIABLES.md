@@ -4,20 +4,19 @@ This is the canonical environment-variable reference for Otis.
 
 ## `.env` (infrastructure + shared)
 
-| Variable                   | Required              | Used by                           | Purpose                                         |
-| -------------------------- | --------------------- | --------------------------------- | ----------------------------------------------- |
-| `AZURE_OPENAI_ENDPOINT`    | Yes                   | API, worker                       | Azure OpenAI endpoint used by LangChain clients |
-| `AZURE_OPENAI_API_KEY`     | Yes                   | API, worker                       | Azure OpenAI API key                            |
-| `LANGSMITH_TRACING`        | No                    | API, worker                       | Enables LangSmith tracing                       |
-| `LANGSMITH_ENDPOINT`       | No                    | API, worker                       | LangSmith endpoint                              |
-| `LANGSMITH_API_KEY`        | No                    | API, worker                       | LangSmith API key                               |
-| `LANGSMITH_PROJECT`        | No                    | API, worker                       | LangSmith project name                          |
-| `POSTGRES_USER`            | Yes                   | db, API/worker connection strings | Postgres user                                   |
-| `POSTGRES_PASSWORD`        | Yes                   | db, API/worker connection strings | Postgres password                               |
-| `POSTGRES_DB`              | Yes                   | db, API/worker connection strings | Postgres database name                          |
-| `PGADMIN_DEFAULT_EMAIL`    | No                    | pgadmin                           | pgAdmin login email                             |
-| `PGADMIN_DEFAULT_PASSWORD` | No                    | pgadmin                           | pgAdmin login password                          |
-| `VITE_API_BASE_URL`        | Yes (frontend builds) | frontend                          | Compile-time API base URL                       |
+| Variable                   | Required              | Used by                           | Purpose                                  |
+| -------------------------- | --------------------- | --------------------------------- | ---------------------------------------- |
+| `OPENAI_API_KEY`           | Yes                   | API, worker                       | OpenAI API key used by LangChain clients |
+| `LANGSMITH_TRACING`        | No                    | API, worker                       | Enables LangSmith tracing                |
+| `LANGSMITH_ENDPOINT`       | No                    | API, worker                       | LangSmith endpoint                       |
+| `LANGSMITH_API_KEY`        | No                    | API, worker                       | LangSmith API key                        |
+| `LANGSMITH_PROJECT`        | No                    | API, worker                       | LangSmith project name                   |
+| `POSTGRES_USER`            | Yes                   | db, API/worker connection strings | Postgres user                            |
+| `POSTGRES_PASSWORD`        | Yes                   | db, API/worker connection strings | Postgres password                        |
+| `POSTGRES_DB`              | Yes                   | db, API/worker connection strings | Postgres database name                   |
+| `PGADMIN_DEFAULT_EMAIL`    | No                    | pgadmin                           | pgAdmin login email                      |
+| `PGADMIN_DEFAULT_PASSWORD` | No                    | pgadmin                           | pgAdmin login password                   |
+| `VITE_API_BASE_URL`        | Yes (frontend builds) | frontend                          | Compile-time API base URL                |
 
 ## `.env.fastapi` (application settings)
 

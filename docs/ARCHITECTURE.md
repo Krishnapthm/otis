@@ -679,16 +679,16 @@ The `Annotated[..., add]` fields (`messages`, `mcq_drafts`) use the `operator.ad
 All models are configured in `src/agents/utils/llm_config.py`:
 
 ```python
-guardrail_llm   = AzureChatOpenAI(azure_deployment="gpt-4.1-nano")
-intent_llm       = AzureChatOpenAI(azure_deployment="gpt-4.1-nano")
-planner_llm      = AzureChatOpenAI(azure_deployment="gpt-4.1-nano")
-stem_llm         = AzureChatOpenAI(azure_deployment="gpt-4.1-nano")
-options_llm      = AzureChatOpenAI(azure_deployment="gpt-4.1-nano")
-validator_llm    = AzureChatOpenAI(azure_deployment="gpt-4.1-nano")
-chat_no_tools_llm = AzureChatOpenAI(azure_deployment="gpt-4.1-nano", streaming=True)
+guardrail_llm   = ChatOpenAI(model="gpt-4.1-nano")
+intent_llm       = ChatOpenAI(model="gpt-4.1-nano")
+planner_llm      = ChatOpenAI(model="gpt-4.1-nano")
+stem_llm         = ChatOpenAI(model="gpt-4.1-nano")
+options_llm      = ChatOpenAI(model="gpt-4.1-nano")
+validator_llm    = ChatOpenAI(model="gpt-4.1-nano")
+chat_no_tools_llm = ChatOpenAI(model="gpt-4.1-nano", streaming=True)
 ```
 
-All agent nodes currently use `gpt-4.1-nano`. Each alias is separately configurable — swap any deployment name without touching node code.
+All agent nodes currently use `gpt-4.1-nano`. Each alias is separately configurable — swap any model name without touching node code.
 
 ---
 
