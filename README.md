@@ -20,9 +20,7 @@ An agentic RAG-based MCQ generation system that transforms uploaded PDFs into va
 
 Otis is built around two core workflows:
 
-**MCQ Generation** — An educator uploads a PDF. The system parses it (Docling), chunks and embeds the content (Ollama + pgvector), and extracts key concepts. When assessments are requested, a LangGraph agent plans the question set, retrieves relevant chunks via concept-aware two-layer RAG, then fans out parallel subgraph invocations that each generate a question stem, distractors, and explanations — validated in a retry loop.
-
-**Conversational Tutoring** — The same agent handles free-form chat. User messages pass through scope and intent classifiers before routing to document-grounded responses, tool use, or MCQ generation as needed.
+**MCQ Generation** An educator uploads a PDF. The system parses it (Docling), chunks and embeds the content (Ollama + pgvector), and extracts key concepts. When assessments are requested, a LangGraph agent plans the question set, retrieves relevant chunks via concept aware two layer RAG, then fans out parallel subgraph invocations that each generate a question stem, distractors, and explanations validated in a retry loop.
 
 **MCQ Export** — Persisted MCQ tests can be exported in multiple formats (`md`, `json`, `pdf`, `docx`) through `/v1/mcqs/{mcq_id}/export` with two modes: `raw` (includes correct answers + explanations) and `test` (questions + options only). The frontend exposes this via a reusable export dropdown used in both chat MCQ cards and the MCQ listing page.
 
