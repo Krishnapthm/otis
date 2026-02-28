@@ -1,4 +1,5 @@
 // Agent API client for graph SSE endpoints
+import { resolveApiBaseUrl } from "./authApi";
 
 // ============================================================================
 // Types
@@ -48,7 +49,8 @@ export interface ResumeRequest {
 // API Functions
 // ============================================================================
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const API_ROOT = API_BASE === "/" ? "" : API_BASE;
 
 /**
  * Get the auth token for SSE requests
@@ -72,7 +74,7 @@ export async function startGraphStream(
 
   // Use fetch with streaming for SSE since we need to access headers
   // and send POST request with body
-  const response = await fetch(`${API_BASE}/v1/graph/start`, {
+  const response = await fetch(`${API_ROOT}/v1/graph/start`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -156,7 +158,7 @@ export async function resumeGraphStream(
 ): Promise<{ close: () => void }> {
   const token = getAuthToken();
 
-  const response = await fetch(`${API_BASE}/v1/graph/resume/${threadId}`, {
+  const response = await fetch(`${API_ROOT}/v1/graph/resume/${threadId}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

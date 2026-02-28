@@ -1,10 +1,15 @@
 import axios from "axios";
 
 export function resolveApiBaseUrl(envValue?: string): string {
-  return envValue && envValue.trim() ? envValue : "/";
+  const normalized = envValue?.trim();
+  if (!normalized || normalized === "/") {
+    return "/";
+  }
+  return normalized.replace(/\/+$/, "");
 }
 
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const API_ROOT = API_BASE_URL === "/" ? "" : API_BASE_URL;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -21,7 +26,7 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 
   const res = await axios.post(
-    `${API_BASE_URL}/v1/auth/refresh`,
+    `${API_ROOT}/v1/auth/refresh`,
     { refresh_token: refreshToken },
     { withCredentials: true },
   );

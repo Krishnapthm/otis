@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/validation-checklist";
 import { useState, useMemo, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
 
 // Validation constants
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -66,6 +67,11 @@ export function SignupForm() {
         id: "number",
         label: "At least one number",
         isValid: /[0-9]/.test(password),
+      },
+      {
+        id: "special",
+        label: "At least one special character",
+        isValid: /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/.test(password),
       },
       {
         id: "match",
@@ -118,6 +124,10 @@ export function SignupForm() {
     // Check for number
     if (!/[0-9]/.test(value)) {
       return "Password must contain at least one number";
+    }
+    // Check for special character
+    if (!/[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/.test(value)) {
+      return "Password must contain at least one special character";
     }
     return undefined;
   }
@@ -204,7 +214,15 @@ export function SignupForm() {
       await signup({ email, password, uname });
       navigate("/login");
     } catch (err) {
-      setError("Email already exists");
+      if (axios.isAxiosError(err)) {
+        const detail = err.response?.data?.detail;
+        if (typeof detail === "string" && detail.trim()) {
+          setError(detail);
+          return;
+        }
+      }
+
+      setError("Signup failed. Please try again.");
     }
   }
 

@@ -41,6 +41,6 @@ export async function getEmbeddingStatus(): Promise<VectorstoreStatus> {
 
 // Clear vectorstore (optional - for advanced settings)
 export async function clearVectorstore(): Promise<{ message: string }> {
-  const res = await api.post("/v1/embeddings/clear");
+  const res = await api.delete("/v1/embeddings/clear");
   return res.data;
 }

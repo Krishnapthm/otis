@@ -20,7 +20,7 @@ export function RequireAuth({ children }: { children: JSX.Element }) {
   if (!token || !user) {
     return (
       <Navigate
-        to="/Login"
+        to="/login"
         replace
         state={{ from: location.pathname || "/" }}
       />

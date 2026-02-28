@@ -6,6 +6,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect, type FormEvent } from "react";
 import { login } from "@/api/authApi";
 import { useAuth } from "@/authContext";
+import axios from "axios";
 import Otis2 from "@/assets/Otis2.svg";
 import Otis3 from "@/assets/Otis3.svg";
 import Otis5 from "@/assets/Otis5.svg";
@@ -115,7 +116,29 @@ export function LoginForm() {
       navigate("/");
     } catch (err) {
       console.error(err);
-      setError("Invalid email or password");
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+        const detail = err.response?.data?.detail;
+
+        if (status === 401) {
+          setError("Invalid email or password");
+          return;
+        }
+
+        if (status === 404) {
+          setError(
+            "Auth endpoint not found. Check frontend API base URL configuration.",
+          );
+          return;
+        }
+
+        if (typeof detail === "string" && detail.trim()) {
+          setError(detail);
+          return;
+        }
+      }
+
+      setError("Login failed. Please try again.");
     }
   }
 

@@ -30,28 +30,28 @@ Otis is built around two core workflows:
 
 ## Tech Stack
 
-| Layer               | Technology                               |
-| ------------------- | ---------------------------------------- |
-| API                 | FastAPI, SSE streaming                   |
-| Agent orchestration | LangGraph (stateful multi-node graphs)   |
-| LLM                 | Azure OpenAI (gpt-4o-mini, gpt-4.1-nano) |
-| Embeddings          | Ollama (nomic-embed-text, 768-dim)       |
-| Document parsing    | Docling, PyMuPDF                         |
-| Vector store        | Postgres 17 + pgvector                   |
-| ORM                 | SQLAlchemy 2.0 (async) + asyncpg         |
-| Background jobs     | Redis 7 + RQ                             |
-| Auth                | JWT (python-jose + bcrypt)               |
-| Frontend            | React 19, TypeScript, Vite               |
-| UI                  | Tailwind CSS, shadcn/ui, TanStack Query  |
+| Layer               | Technology                              |
+| ------------------- | --------------------------------------- |
+| API                 | FastAPI, SSE streaming                  |
+| Agent orchestration | LangGraph (stateful multi-node graphs)  |
+| LLM                 | OpenAI (gpt-4o-mini, gpt-4.1-nano)      |
+| Embeddings          | Ollama (nomic-embed-text, 768-dim)      |
+| Document parsing    | Docling, PyMuPDF                        |
+| Vector store        | Postgres 17 + pgvector                  |
+| ORM                 | SQLAlchemy 2.0 (async) + asyncpg        |
+| Background jobs     | Redis 7 + RQ                            |
+| Auth                | JWT (python-jose + bcrypt)              |
+| Frontend            | React 19, TypeScript, Vite              |
+| UI                  | Tailwind CSS, shadcn/ui, TanStack Query |
 
-LLM inference uses Azure OpenAI for access to high-quality models with managed rate limits. Embeddings run locally via Ollama to avoid per-token costs on high-volume, latency-tolerant operations.
+LLM inference uses OpenAI for access to high-quality models. Embeddings run locally via Ollama to avoid per-token costs on high-volume, latency-tolerant operations.
 
 ---
 
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) >= 24 and Docker Compose v2
-- An Azure OpenAI resource with `gpt-4o-mini` and `gpt-4.1-nano` deployments
+- An OpenAI API key with access to `gpt-4o-mini` and `gpt-4.1-nano` models
 
 ---
 
@@ -64,7 +64,7 @@ git clone <repo-url> otis && cd otis
 # Create env files from the provided templates
 cp .env.example .env
 cp .env.fastapi.example .env.fastapi
-# Edit both files — fill in Azure OpenAI creds, Postgres creds, JWT secret, DB_URL
+# Edit both files — fill in OpenAI API key, Postgres creds, JWT secret, DB_URL
 
 # Start everything (backend, frontend, database, redis, ollama)
 docker compose up --build -d
@@ -88,8 +88,7 @@ Otis uses two env files: `.env` for infrastructure/shared secrets and `.env.fast
 
 | Variable                   | Required | Description                 |
 | -------------------------- | -------- | --------------------------- |
-| `AZURE_OPENAI_ENDPOINT`    | Yes      | Azure OpenAI resource URL   |
-| `AZURE_OPENAI_API_KEY`     | Yes      | Azure OpenAI API key        |
+| `OPENAI_API_KEY`           | Yes      | OpenAI API key              |
 | `POSTGRES_USER`            | Yes      | Postgres superuser name     |
 | `POSTGRES_PASSWORD`        | Yes      | Postgres superuser password |
 | `POSTGRES_DB`              | Yes      | Postgres database name      |
