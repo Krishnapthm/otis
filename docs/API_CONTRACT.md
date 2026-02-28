@@ -940,36 +940,50 @@ Create an MCQ set.
 ```json
 {
   "mcq": {
+    "test_id": "550e8400-e29b-41d4-a716-446655440000",
+    "doc_ids": ["d6bb21b5-6459-4f6f-a2fe-53d7d63d2df4"],
+    "plan": {
+      "topic": "Cell Biology",
+      "difficulty": "MEDIUM"
+    },
     "questions": [
       {
-        "question_id": 1,
+        "question_index": 0,
         "question": "What is the powerhouse of the cell?",
         "options": [
-          { "id": "A", "text": "Nucleus" },
-          { "id": "B", "text": "Mitochondria" },
-          { "id": "C", "text": "Ribosome" },
-          { "id": "D", "text": "Golgi apparatus" }
+          { "key": "A", "text": "Nucleus" },
+          { "key": "B", "text": "Mitochondria" },
+          { "key": "C", "text": "Ribosome" },
+          { "key": "D", "text": "Golgi apparatus" }
         ],
-        "answer": "B",
+        "right_answer": "B",
         "explanation": "Mitochondria produce ATP through cellular respiration."
       }
-    ]
+    ],
+    "test_name": "Cell Biology MCQ Test",
+    "created_at": "2026-02-27T10:30:00.000000"
   }
 }
 ```
 
 **Schema constraints:**
 
-- `options[].id` must be one of `"A"`, `"B"`, `"C"`, `"D"`.
-- `answer` must be one of `"A"`, `"B"`, `"C"`, `"D"`.
+- `options[].key` must be one of `"A"`, `"B"`, `"C"`, `"D"`.
+- `right_answer` must be one of `"A"`, `"B"`, `"C"`, `"D"`.
 
 **Response** `201 Created` (`ReadMCQ`):
 
 ```json
 {
-  "mcq": { "questions": [...] },
   "mcq_id": "mcq-uuid-...",
-  "generated_at": "2026-02-27T10:30:00+00:00"
+  "mcq": {
+    "test_id": "550e8400-e29b-41d4-a716-446655440000",
+    "doc_ids": [],
+    "plan": {},
+    "questions": [...],
+    "test_name": "Cell Biology MCQ Test",
+    "created_at": "2026-02-27T10:30:00+00:00"
+  }
 }
 ```
 
@@ -1003,6 +1017,53 @@ Download an MCQ set as a JSON file.
 | 404    | `"MCQ not found"` | Invalid MCQ UUID |
 
 Note: The 404 response is returned as a raw `Response(status_code=404, content="MCQ not found")`, not as the standard FastAPI `HTTPException` JSON envelope.
+
+---
+
+### GET `/v1/mcqs/{mcq_id}/export`
+
+Export a persisted MCQ test in `md`, `json`, `pdf`, or `docx` format.
+
+**Query parameters:**
+
+| Param    | Type   | Required | Allowed values                    |
+| -------- | ------ | -------- | --------------------------------- |
+| `format` | string | yes      | `md`, `json`, `pdf`, `docx`       |
+| `mode`   | string | yes      | `raw`, `test`                     |
+
+**Behavior by mode:**
+
+- `raw`: includes question, options, `right_answer`, and `explanation`
+- `test`: includes question and options only (`right_answer`/`explanation` removed)
+
+**Response** `200 OK`:
+
+| Format | Content-Type                                                            |
+| ------ | ----------------------------------------------------------------------- |
+| `md`   | `text/markdown; charset=utf-8`                                          |
+| `json` | `application/json`                                                      |
+| `pdf`  | `application/pdf`                                                       |
+| `docx` | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+
+The endpoint always sets `Content-Disposition: attachment; filename="mcq_{mode}_{timestamp}.{format}"`.
+
+**Error responses:**
+
+| Status | Detail            | Cause            |
+| ------ | ----------------- | ---------------- |
+| 404    | `"MCQ not found"` | Invalid MCQ UUID |
+
+---
+
+### Legacy aliases (`/v1/mcq/...`)
+
+For backward compatibility, legacy MCQ routes are still mounted under `/v1/mcq`:
+
+- `POST /v1/mcq/create`
+- `GET /v1/mcq/list`
+- `GET /v1/mcq/list/{id}`
+- `GET /v1/mcq/download/{id}`
+- `GET /v1/mcq/{mcq_id}/export`
 
 ---
 

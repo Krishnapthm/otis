@@ -74,6 +74,7 @@ frontend/otis-ui/src/
 │   │   ├── documents/                # DocumentsTab, grid/table views, thumbnails
 │   │   ├── generation/               # ConceptSelector, GenerateTab, ReviewTab
 │   │   ├── projects/                 # Project CRUD, detail page, tabs
+│   │   ├── mcq/                      # Reusable MCQ export dropdown/button
 │   │   ├── dashboard/                # Charts, stat cards (hardcoded data)
 │   │   └── embeddings/               # Column defs, empty table file
 │   │
@@ -115,6 +116,7 @@ frontend/otis-ui/src/
 | `/dashboard`      | `Dashboard`         | Yes           | Active — hardcoded demo data  |
 | `/projects`       | `Projects`          | Yes           | Active                        |
 | `/p/:projectId`   | `ProjectDetailPage` | Yes           | Active                        |
+| `/mcqs`           | `MCQs`              | Yes           | Active — persistent MCQ list + export |
 | `/data-library`   | `DataLibrary`       | Yes           | Active                        |
 | `/vector-store`   | `VectorStore`       | Yes           | Active                        |
 | `/reports`        | `Reports`           | Yes           | Placeholder                   |
@@ -474,17 +476,35 @@ interface AgentEvent {
 
 ### `mcqApi.ts` — MCQ Operations
 
-**Lines:** 55
+**Lines:** ~90
 
-| Function          | Method | Path                     | Parameters    | Returns     | Error Handling                      |
-| ----------------- | ------ | ------------------------ | ------------- | ----------- | ----------------------------------- |
-| `mcqApi.getAll`   | GET    | `/v1/mcqs/`              | `limit, skip` | `ReadMCQ[]` | Falls back to `/mcqs/`              |
-| `mcqApi.getById`  | GET    | `/v1/mcqs/{id}`          | `id`          | `ReadMCQ[]` | Falls back to `/mcqs/{id}`          |
-| `mcqApi.download` | GET    | `/v1/mcqs/download/{id}` | `id`          | `Blob`      | Falls back to `/mcqs/download/{id}` |
+| Function          | Method | Path                          | Parameters             | Returns               | Error Handling                             |
+| ----------------- | ------ | ----------------------------- | ---------------------- | --------------------- | ------------------------------------------ |
+| `mcqApi.getAll`   | GET    | `/v1/mcqs/`                   | `limit, skip`          | `ReadMCQ[]`           | Falls back to `/mcqs/`                     |
+| `mcqApi.getById`  | GET    | `/v1/mcqs/{id}`               | `id`                   | `ReadMCQ[]`           | Falls back to `/mcqs/{id}`                 |
+| `mcqApi.download` | GET    | `/v1/mcqs/download/{id}`      | `id`                   | `Blob`                | Falls back to `/mcqs/download/{id}`        |
+| `mcqApi.exportMcq`| GET    | `/v1/mcqs/{id}/export`        | `id, mode, format`     | `AxiosResponse<Blob>` | Falls back to `/mcqs/{id}/export`          |
 
 Every method uses a try/catch fallback pattern: first attempts the `/v1/` prefixed path, then retries without it. This handles backend version ambiguity but means every failed request produces two HTTP calls.
 
-The `ReadMCQ.mcq` field is typed as `any` — the MCQ structure is not typed on the frontend.
+The MCQ payload is now strongly typed on the client (`MCQTest`, `MCQQuestion`, `MCQOption`), including export mode/format unions:
+
+- `MCQExportMode = "raw" | "test"`
+- `MCQExportFormat = "md" | "json" | "pdf" | "docx"`
+
+### Reusable MCQ export UI
+
+The export dropdown is centralized in `src/components/features/mcq/mcq-export-button.tsx` and reused across:
+
+- `src/pages/mcqs.tsx` (persistent MCQ list)
+- `src/components/features/chat/chat-message.tsx` (assistant MCQ messages)
+
+The component implements a 2-step dropdown flow:
+
+1. choose mode (`Raw` / `Test`)
+2. choose file type (`MD`, `PDF`, `JSON`, `DOCX`) with a Back action
+
+It uses `DropdownMenuItem` `onSelect` handlers with `event.preventDefault()` so the menu stays open when transitioning from mode step to format step.
 
 ### `projectApi.ts` — Project CRUD
 

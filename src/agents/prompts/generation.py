@@ -34,7 +34,9 @@ Requirements:
 - keep option lengths balanced
 
 Return JSON with keys:
-- options: list[str] (length 4)
+- options: list[object] (length 4), each object must include:
+    - key: one of A|B|C|D
+    - text: option text only (do not prefix with "A.", "B)", etc.)
 - correct_answer: one of A|B|C|D
 - explanation: short explanation for why the correct option is correct
 """

@@ -26,6 +26,8 @@ Otis is built around two core workflows:
 
 **Conversational Tutoring** — The same agent handles free-form chat. User messages pass through scope and intent classifiers before routing to document-grounded responses, tool use, or MCQ generation as needed.
 
+**MCQ Export** — Persisted MCQ tests can be exported in multiple formats (`md`, `json`, `pdf`, `docx`) through `/v1/mcqs/{mcq_id}/export` with two modes: `raw` (includes correct answers + explanations) and `test` (questions + options only). The frontend exposes this via a reusable export dropdown used in both chat MCQ cards and the MCQ listing page.
+
 ---
 
 ## Tech Stack

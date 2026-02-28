@@ -19,7 +19,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 import datetime
 import uuid
@@ -177,6 +177,14 @@ class Mcqs(Base):
         DateTime, server_default=text("CURRENT_TIMESTAMP")
     )
     mcq: Mapped[Optional[dict]] = mapped_column(JSONB)
+    test_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+    doc_ids: Mapped[Optional[List[uuid.UUID]]] = mapped_column(ARRAY(Uuid))
+    plan: Mapped[Optional[dict]] = mapped_column(JSONB)
+    questions: Mapped[Optional[list]] = mapped_column(JSONB)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    test_name: Mapped[Optional[str]] = mapped_column(Text)
 
     project: Mapped[List["Projects"]] = relationship(
         "Projects", secondary="project_mcqs", back_populates="mcq"

@@ -66,6 +66,7 @@ app = FastAPI(
 
 
 app.include_router(mcqs.router, prefix="/v1", tags=["MCQ"])
+app.include_router(mcqs.legacy_router, prefix="/v1", tags=["MCQ"])
 app.include_router(docs.router, prefix="/v1", tags=["Project Documents"])
 app.include_router(docs.user_docs_router, prefix="/v1", tags=["User Documents"])
 app.include_router(projects.router, prefix="/v1", tags=["Projects"])

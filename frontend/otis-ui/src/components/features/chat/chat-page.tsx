@@ -123,12 +123,14 @@ function apiMessageToLocal(msg: {
   message_id: string;
   role: string;
   content: string | null;
+  structured_data?: Record<string, unknown> | null;
   created_at: string;
 }): ChatMessageType {
   return {
     id: msg.message_id,
     role: msg.role as "user" | "assistant",
     content: msg.content ?? "",
+    structuredData: msg.structured_data ?? null,
     createdAt: msg.created_at,
   };
 }

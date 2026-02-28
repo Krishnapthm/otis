@@ -24,6 +24,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  structuredData?: Record<string, unknown> | null;
   isStreaming?: boolean;
   thinking?: ThinkingStep[];
   citations?: Citation[];

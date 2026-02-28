@@ -16,12 +16,6 @@ import Dashboard from "./components/features/dashboard/dashboard.tsx";
 import ChatPage from "./components/features/chat/chat-page.tsx";
 import Projects from "./components/features/projects/projects.tsx";
 import ProjectDetailPage from "./components/features/projects/ProjectDetailPage.tsx";
-// New page imports
-import Analytics from "@/pages/analytics.tsx";
-import Team from "@/pages/team.tsx";
-import Capture from "@/pages/capture.tsx";
-import Proposal from "@/pages/proposal.tsx";
-import Prompts from "@/pages/prompts.tsx";
 import DataLibrary from "@/pages/data-library.tsx";
 import VectorStore from "@/pages/vector-store.tsx";
 import Reports from "@/pages/reports.tsx";
@@ -29,6 +23,8 @@ import WordAssistant from "@/pages/word-assistant.tsx";
 import Settings from "@/pages/settings.tsx";
 import Help from "@/pages/help.tsx";
 import Search from "@/pages/search.tsx";
+import MCQs from "@/pages/mcqs.tsx";
+import ChatsPage from "@/pages/chats.tsx";
 
 const router = createBrowserRouter([
   {
@@ -50,6 +46,10 @@ const router = createBrowserRouter([
       {
         path: "dashboard",
         element: <Dashboard />,
+      },
+      {
+        path: "chats",
+        element: <ChatsPage />,
       },
       {
         path: "projects",
@@ -94,6 +94,10 @@ const router = createBrowserRouter([
       {
         path: "word-assistant",
         element: <WordAssistant />,
+      },
+      {
+        path: "mcqs",
+        element: <MCQs />,
       },
       {
         path: "settings",

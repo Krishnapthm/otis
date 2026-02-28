@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import type { ChatMessage as ChatMessageType } from "@/lib/chat-types";
 import { cn } from "@/lib/utils";
 import {
@@ -8,6 +9,8 @@ import {
   SparklesIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import mcqApi from "@/api/mcqApi";
+import { MCQExportButton } from "@/components/features/mcq/mcq-export-button";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -249,6 +252,150 @@ interface ChatMessageProps {
   message: ChatMessageType;
 }
 
+type MCQOptionView = {
+  key: "A" | "B" | "C" | "D";
+  text: string;
+};
+
+type MCQQuestionView = {
+  question_index: number;
+  question: string;
+  options: MCQOptionView[];
+  right_answer: "A" | "B" | "C" | "D";
+  explanation: string;
+};
+
+function stripOptionPrefix(text: string): string {
+  return text.replace(/^[A-Da-d][.)-]\s*/, "").trim();
+}
+
+function normalizeQuestion(
+  rawQuestion: Record<string, unknown>,
+  index: number,
+): MCQQuestionView {
+  const rawOptions = Array.isArray(rawQuestion.options)
+    ? rawQuestion.options
+    : [];
+  const options: MCQOptionView[] = rawOptions.map((rawOption, optionIndex) => {
+    const option = (rawOption ?? {}) as Record<string, unknown>;
+    const key =
+      (option.key as "A" | "B" | "C" | "D") ||
+      (option.id as "A" | "B" | "C" | "D") ||
+      (["A", "B", "C", "D"][Math.min(optionIndex, 3)] as "A" | "B" | "C" | "D");
+
+    return {
+      key,
+      text: stripOptionPrefix(String(option.text ?? "")),
+    };
+  });
+
+  return {
+    question_index:
+      Number(rawQuestion.question_index ?? rawQuestion.question_id ?? index) ||
+      index,
+    question: String(rawQuestion.question ?? ""),
+    options,
+    right_answer: String(
+      rawQuestion.right_answer ?? rawQuestion.answer ?? "A",
+    ) as "A" | "B" | "C" | "D",
+    explanation: String(rawQuestion.explanation ?? ""),
+  };
+}
+
+function parseMcqsFromStructuredData(
+  structuredData: Record<string, unknown> | null | undefined,
+): MCQQuestionView[] {
+  if (!structuredData) return [];
+
+  const payload =
+    (structuredData.mcq_test as Record<string, unknown> | undefined) ||
+    structuredData;
+  const questionsRaw = payload.questions;
+  if (!Array.isArray(questionsRaw)) return [];
+
+  return questionsRaw.map((raw, index) =>
+    normalizeQuestion((raw ?? {}) as Record<string, unknown>, index),
+  );
+}
+
+function parseMcqsFromContent(content: string): MCQQuestionView[] {
+  if (!/Q\d+\./.test(content) || !/Right Answer:/i.test(content)) {
+    return [];
+  }
+
+  const lines = content.split("\n");
+  const questions: MCQQuestionView[] = [];
+  let current: MCQQuestionView | null = null;
+
+  const pushCurrent = () => {
+    if (current) {
+      questions.push(current);
+      current = null;
+    }
+  };
+
+  for (const line of lines) {
+    const questionMatch = line.match(/^Q(\d+)\.\s*(.*)$/);
+    if (questionMatch) {
+      pushCurrent();
+      current = {
+        question_index: Math.max(Number(questionMatch[1]) - 1, 0),
+        question: questionMatch[2].trim(),
+        options: [],
+        right_answer: "A",
+        explanation: "",
+      };
+      continue;
+    }
+
+    if (!current) continue;
+
+    const optionMatch = line.match(/^([A-D])\.\s*(.*)$/);
+    if (optionMatch) {
+      current.options.push({
+        key: optionMatch[1] as "A" | "B" | "C" | "D",
+        text: stripOptionPrefix(optionMatch[2]),
+      });
+      continue;
+    }
+
+    const answerMatch = line.match(/^Right Answer:\s*([A-D])/i);
+    if (answerMatch) {
+      current.right_answer = answerMatch[1].toUpperCase() as
+        | "A"
+        | "B"
+        | "C"
+        | "D";
+      continue;
+    }
+
+    const explanationMatch = line.match(/^Explanation:\s*(.*)$/i);
+    if (explanationMatch) {
+      current.explanation = explanationMatch[1].trim();
+    }
+  }
+
+  pushCurrent();
+  return questions;
+}
+
+function getRenderableMcqs(message: ChatMessageType): MCQQuestionView[] {
+  const structured = parseMcqsFromStructuredData(message.structuredData);
+  if (structured.length > 0) return structured;
+  return parseMcqsFromContent(message.content);
+}
+
+function getMcqIdFromStructuredData(
+  structuredData: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!structuredData) return null;
+  const mcqId = structuredData.mcq_id;
+  if (typeof mcqId === "string" && mcqId.length > 0) {
+    return mcqId;
+  }
+  return null;
+}
+
 /** Map step labels to contextual icons for the ChainOfThought UI. */
 function getStepIcon(label: string): LucideIcon | undefined {
   const l = label.toLowerCase();
@@ -264,11 +411,70 @@ function getStepIcon(label: string): LucideIcon | undefined {
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
+  const [resolvedMcqId, setResolvedMcqId] = useState<string | null>(null);
+
   const isUser = message.role === "user";
   const hasThinking =
     !isUser && message.thinking && message.thinking.length > 0;
   const isStreaming = message.isStreaming ?? false;
   const hideMessageBubble = isStreaming && !message.content;
+  const mcqQuestions = useMemo(
+    () => (!isUser ? getRenderableMcqs(message) : []),
+    [isUser, message],
+  );
+  const mcqId = !isUser ? getMcqIdFromStructuredData(message.structuredData) : null;
+  const questionSignature = useMemo(
+    () =>
+      mcqQuestions
+        .map((question) => question.question.trim().toLowerCase())
+        .join("||"),
+    [mcqQuestions],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (mcqId) {
+      setResolvedMcqId(mcqId);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (isUser || mcqQuestions.length === 0 || !questionSignature) {
+      setResolvedMcqId(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      try {
+        const recentMcqs = await mcqApi.getAll(100, 0);
+        const matched = recentMcqs.find((item) => {
+          const persistedQuestions = item.mcq?.questions ?? [];
+          const persistedSignature = persistedQuestions
+            .map((question) => String(question.question ?? "").trim().toLowerCase())
+            .join("||");
+          return persistedSignature === questionSignature;
+        });
+
+        if (!cancelled) {
+          setResolvedMcqId(matched?.mcq_id ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setResolvedMcqId(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUser, mcqId, mcqQuestions.length, questionSignature]);
+
+  const activeMcqId = mcqId ?? resolvedMcqId;
 
   return (
     <div
@@ -330,9 +536,45 @@ export function ChatMessage({ message }: ChatMessageProps) {
               <p className="whitespace-pre-wrap wrap-break-word">
                 {renderMessageMentions(message.content)}
               </p>
+            ) : mcqQuestions.length > 0 ? (
+              <div className="rounded-xl border bg-card p-3 space-y-4">
+                {mcqQuestions.map((question) => (
+                  <div key={`${question.question_index}-${question.question}`}>
+                    <p className="font-medium">
+                      {question.question_index + 1}. {question.question}
+                    </p>
+                    <div className="mt-2 space-y-1">
+                      {question.options.map((option) => (
+                        <div key={`${question.question_index}-${option.key}`}>
+                          <span className="font-medium mr-1">
+                            {option.key}.
+                          </span>
+                          <span>{option.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 text-sm">
+                      <p>
+                        <span className="font-medium">Correct answer:</span>{" "}
+                        {question.right_answer}
+                      </p>
+                      <p className="mt-1">
+                        <span className="font-medium">Explanation:</span>{" "}
+                        {question.explanation}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               renderContentWithCitations(message)
             )}
+          </div>
+        )}
+
+        {!isUser && mcqQuestions.length > 0 && (
+          <div className="flex justify-end">
+            <MCQExportButton mcqId={activeMcqId} />
           </div>
         )}
       </div>

@@ -11,24 +11,29 @@ import datetime
 
 
 class Options(BaseModel):
-    id: Literal["A", "B", "C", "D"] = Field(description="Option id")
-    text: str = Field(description="Options for the answer of MCQ")
+    key: Literal["A", "B", "C", "D"] = Field(description="Option key")
+    text: str = Field(description="Option text")
 
 
 class Questions(BaseModel):
-    question_id: int = Field(description="The unique id of the MCQ")
-    question: str = Field(description="Generated Question")
+    question_index: int = Field(description="Zero-based index of the question")
+    question: str = Field(description="Question stem")
     options: List[Options] = Field(
         description="The list of options for the generated MCQ"
     )
-    answer: Literal["A", "B", "C", "D"] = Field(
+    right_answer: Literal["A", "B", "C", "D"] = Field(
         description="The correct option for the MCQ"
     )
     explanation: str = Field(description="Explanation for the right answer")
 
 
 class MCQ(BaseModel):
+    test_id: UUID4 = Field(default_factory=uuid.uuid4)
+    doc_ids: List[uuid.UUID] = Field(default_factory=list)
+    plan: dict = Field(default_factory=dict)
     questions: List[Questions] = Field(description="Multiple Choice Questions")
+    test_name: str = Field(description="Human-readable test name")
+    created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
 
 
 class CreateMCQ(BaseModel):
@@ -37,7 +42,6 @@ class CreateMCQ(BaseModel):
 
 class ReadMCQ(CreateMCQ):
     mcq_id: UUID4
-    generated_at: datetime.datetime
 
 
 # ============================================================================

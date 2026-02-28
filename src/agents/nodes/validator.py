@@ -7,9 +7,13 @@ from src.agents.utils.state import QuestionSubgraphState
 
 
 async def validator_node(state: QuestionSubgraphState, validator_llm) -> dict:
+    options_payload = [
+        option.model_dump(mode="json") if hasattr(option, "model_dump") else option
+        for option in (state.get("options") or [])
+    ]
     draft_payload = {
         "stem": state.get("stem"),
-        "options": state.get("options") or [],
+        "options": options_payload,
         "correct_answer": state.get("correct_answer"),
     }
     prompt = await PROMPT_REGISTRY["validator"].ainvoke(

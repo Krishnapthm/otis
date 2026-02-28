@@ -15,8 +15,10 @@ import {
 
 type ReadMCQ = {
   mcq_id: string;
-  generated_at: string;
-  mcq: any;
+  mcq: {
+    created_at?: string;
+    questions?: any[];
+  };
 };
 
 import mcqApi from "@/api/mcqApi";
@@ -34,9 +36,11 @@ export function SectionCards() {
       .then((data: ReadMCQ[]) => {
         if (!mounted) return;
         const list = Array.isArray(data) ? data : [];
-        // sort descending by generated_at so latest is first
+        // sort descending by created_at so latest is first
         list.sort(
-          (a, b) => +new Date(b.generated_at) - +new Date(a.generated_at),
+          (a, b) =>
+            +new Date(b.mcq?.created_at || 0) -
+            +new Date(a.mcq?.created_at || 0),
         );
         setMcqs(list);
       })
@@ -58,7 +62,7 @@ export function SectionCards() {
     const today = new Date();
     return mcqs.filter((m) => {
       try {
-        const d = new Date(m.generated_at);
+        const d = new Date(m.mcq?.created_at || 0);
         return (
           d.getFullYear() === today.getFullYear() &&
           d.getMonth() === today.getMonth() &&
@@ -75,13 +79,7 @@ export function SectionCards() {
     const counts = mcqs.map((m) => {
       const payload = m.mcq;
       if (!payload) return 0;
-      // backend MCQ shape: { questions: [...] }
       if (Array.isArray(payload.questions)) return payload.questions.length;
-      // sometimes payload may be wrapped: { mcq: { questions: [...] } }
-      if (payload.mcq && Array.isArray(payload.mcq.questions))
-        return payload.mcq.questions.length;
-      // fallback if payload itself is an array
-      if (Array.isArray(payload)) return payload.length;
       return 0;
     });
     const totalQ = counts.reduce((a, b) => a + b, 0);
@@ -187,7 +185,7 @@ export function SectionCards() {
               ? new Intl.DateTimeFormat(undefined, {
                   dateStyle: "medium",
                   timeStyle: "short",
-                }).format(new Date(latest.generated_at))
+                }).format(new Date(latest.mcq?.created_at || 0))
               : "No data"}
           </div>
           <div className="text-muted-foreground">

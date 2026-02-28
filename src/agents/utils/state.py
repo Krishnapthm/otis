@@ -1,6 +1,7 @@
+from datetime import datetime
 from typing import Annotated, List, Literal, Optional
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing_extensions import TypedDict
 from operator import add
 
@@ -81,16 +82,6 @@ class TestGenerationPlan(BaseModel):
     concepts: List[Concept]
 
 
-class MCQDraft(BaseModel):
-    question_index: int = Field(default=0)
-    stem: Optional[str]
-    options: Optional[List[str]]
-    answer: Optional[str]
-    explanation: str = ""
-    validation_score: Optional[float] = None
-    validation_feedback: Optional[str] = None
-
-
 class MCQQuestion(BaseModel):
     question_index: int
     question: str
@@ -120,14 +111,85 @@ class RetrievalStatus(BaseModel):
     error: Optional[str] = None
 
 
+class MCQOption(BaseModel):
+    key: Literal["A", "B", "C", "D"]
+    text: str = Field(
+        description="Option text only — no letter prefix like 'A.' or 'A)'"
+    )
+
+    @field_validator("text")
+    @classmethod
+    def strip_accidental_prefix(cls, v: str) -> str:
+        """Strip if LLM still sneaks in a prefix like 'A. ', 'A) ', 'A - '"""
+        import re
+
+        return re.sub(r"^[A-Da-d][\.\)\-]\s*", "", v.strip())
+
+
+class MCQDraft(BaseModel):
+    question_index: int = Field(default=0)
+    stem: Optional[str]
+    options: Optional[List[MCQOption]]  # ← was List[str], now structured
+    answer: Optional[Literal["A", "B", "C", "D"]]  # ← was str, now constrained
+    explanation: str = ""
+    validation_score: Optional[float] = None
+    validation_feedback: Optional[str] = None
+
+    @model_validator(mode="after")
+    def answer_must_match_option_key(self) -> "MCQDraft":
+        if self.answer and self.options:
+            keys = [o.key for o in self.options]
+            if self.answer not in keys:
+                raise ValueError(
+                    f"answer '{self.answer}' not found in option keys {keys}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def no_duplicate_option_keys(self) -> "MCQDraft":
+        if self.options:
+            keys = [o.key for o in self.options]
+            if len(set(keys)) != len(keys):
+                raise ValueError("Duplicate option keys found in MCQDraft")
+        return self
+
+
+class FinalMCQ(BaseModel):
+    question_index: int
+    question: str
+    options: List[MCQOption]  # ← inherits the same clean model
+    right_answer: Literal["A", "B", "C", "D"]
+    explanation: str
+
+    @model_validator(mode="after")
+    def validate_answer_exists(self) -> "FinalMCQ":
+        keys = [o.key for o in self.options]
+        if len(keys) != 4:
+            raise ValueError(f"FinalMCQ must have exactly 4 options, got {len(keys)}")
+        if self.right_answer not in keys:
+            raise ValueError(
+                f"right_answer '{self.right_answer}' not in options {keys}"
+            )
+        return self
+
+
+class MCQTest(BaseModel):
+    test_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    doc_ids: List[uuid.UUID]
+    plan: TestGenerationPlan
+    questions: List[FinalMCQ]
+    test_name: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class QuestionSubgraphState(TypedDict, total=False):
     plan: TestGenerationPlan
     question_index: int
     retrieved_chunks: List[RetrievedChunk]
     existing_draft: Optional[MCQDraft]
     stem: Optional[str]
-    options: Optional[List[str]]
-    correct_answer: Optional[str]
+    options: Optional[List[MCQOption]]
+    correct_answer: Optional[Literal["A", "B", "C", "D"]]
     explanation: Optional[str]
     retry_count: int
     validation_passed: bool

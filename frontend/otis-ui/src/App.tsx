@@ -2,18 +2,21 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layouts/app-sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SiteHeader } from "@/components/layouts/site-header";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type React from "react";
 import { Outlet, useLocation, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { projectApi } from "@/api/projectApi";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "sonner";
+import ChatsPage from "@/pages/chats";
 
 function App() {
   const location = useLocation();
   const params = useParams();
   const [projectName, setProjectName] = useState<string | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(false);
+  const [isChatsOverlayOpen, setIsChatsOverlayOpen] = useState(false);
 
   useEffect(() => {
     const { projectId } = params;
@@ -59,13 +62,11 @@ function App() {
     const routeToHeader: Record<string, string> = {
       "/": "Chat",
       "/dashboard": "Dashboard",
+      "/chats": "Chats",
       "/projects": "Projects",
-      "/analytics": "Analytics",
-      "/team": "Team",
-      "/capture": "Capture",
-      "/proposal": "Proposal",
-      "/prompts": "Prompts",
       "/data-library": "Data Library",
+      "/mcqs": "MCQs",
+      "/vector-store": "Vector Store",
       "/reports": "Reports",
       "/word-assistant": "Word Assistant",
       "/settings": "Settings",
@@ -97,7 +98,11 @@ function App() {
         } as React.CSSProperties
       }
     >
-      <AppSidebar variant="inset" />
+      <AppSidebar
+        variant="inset"
+        isChatsOverlayOpen={isChatsOverlayOpen}
+        onOpenChatsOverlay={() => setIsChatsOverlayOpen(true)}
+      />
 
       <SidebarInset className="flex flex-col max-h-screen overflow-hidden">
         <SiteHeader title={title} icon={icon} />
@@ -112,6 +117,23 @@ function App() {
         )}
         <Toaster />
       </SidebarInset>
+
+      <Dialog
+        open={isChatsOverlayOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsChatsOverlayOpen(false);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-3xl border-none bg-transparent p-0 shadow-none"
+          overlayClassName="bg-transparent"
+          showCloseButton={false}
+        >
+          <ChatsPage embedded />
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }

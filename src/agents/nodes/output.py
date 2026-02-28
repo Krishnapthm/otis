@@ -9,9 +9,10 @@ def assemble_final_mcqs_node(state: State) -> dict:
     final_mcqs = []
     for draft in ordered_drafts:
         options = draft.options or []
+        options_by_key = {option.key: option.text for option in options}
         normalized_options = [
-            MCQOption(key=key, text=text)
-            for key, text in zip(["A", "B", "C", "D"], options)
+            MCQOption(key=key, text=options_by_key.get(key, ""))
+            for key in ["A", "B", "C", "D"]
         ]
         final_mcqs.append(
             FinalMCQ(

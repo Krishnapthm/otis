@@ -63,7 +63,7 @@ src/
 |           |-- docs.py              # 10 endpoints (project-scoped + user-scoped)
 |           |-- projects.py          # 4 endpoints
 |           |-- embeddings.py        # 3 endpoints
-|           |-- mcqs.py              # 3 endpoints
+|           |-- mcqs.py              # 4 primary + legacy alias endpoints
 |           |-- agent.py             # 2 endpoints (graph start/resume)
 |
 |-- services/                        # [SERVICES] Business logic
@@ -72,6 +72,8 @@ src/
 |   |-- concept_service.py           # Concept extraction + chunk classification + storage
 |   |-- retrieval_service.py         # Two-layer RAG retrieval
 |   |-- file_handling.py             # File I/O, hashing, zip, thumbnails
+|   |-- utils/
+|       |-- export_utils.py          # MCQ export mode shaper + md/json/pdf/docx formatters
 |
 |-- tasks/                           # [TASKS] Background jobs (RQ)
 |   |-- embedding_tasks.py           # Full embedding pipeline
@@ -309,13 +311,13 @@ class Settings(BaseSettings):
 
 ### MCQ Schemas
 
-| Schema      | Purpose             | Notable Fields                                                                    |
-| ----------- | ------------------- | --------------------------------------------------------------------------------- |
-| `Options`   | Single MCQ option   | `id: Literal["A","B","C","D"]`, `text`                                            |
-| `Questions` | Single MCQ question | `question_id: int`, `question`, `options: List[Options]`, `answer`, `explanation` |
-| `MCQ`       | MCQ collection      | `questions: List[Questions]`                                                      |
-| `CreateMCQ` | Create request      | `mcq: MCQ`                                                                        |
-| `ReadMCQ`   | Read response       | Extends `CreateMCQ` + `mcq_id`, `generated_at`                                    |
+| Schema      | Purpose             | Notable Fields                                                                                          |
+| ----------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
+| `Options`   | Single MCQ option   | `key: Literal["A","B","C","D"]`, `text`                                                            |
+| `Questions` | Single MCQ question | `question_index: int`, `question`, `options: List[Options]`, `right_answer`, `explanation`             |
+| `MCQ`       | MCQ collection      | `test_id`, `doc_ids`, `plan`, `questions`, `test_name`, `created_at`                                   |
+| `CreateMCQ` | Create request      | `mcq: MCQ`                                                                                              |
+| `ReadMCQ`   | Read response       | Extends `CreateMCQ` + `mcq_id`                                                                          |
 
 ### Agent/Graph Schemas
 
@@ -443,13 +445,16 @@ For completed/failed messages, returns a JSON `ChatMessageEventReplayResponse` d
 | GET    | `/v1/embeddings/status` | Bearer | --                        | `VectorstoreStatus`       | 200    | Doc counts + vectorstore status                               |
 | DELETE | `/v1/embeddings/clear`  | Bearer | --                        | `dict`                    | 200    | Deletes collection + embeddings, resets docs. Idempotent      |
 
-### 4.5.6 `mcqs.py` -- 3 Endpoints
+### 4.5.6 `mcqs.py` -- MCQ + Export Endpoints
 
-| Method | Path                     | Auth   | Request     | Response                        | Status | Notes                                                                     |
-| ------ | ------------------------ | ------ | ----------- | ------------------------------- | ------ | ------------------------------------------------------------------------- |
-| POST   | `/v1/mcqs/`              | Bearer | `CreateMCQ` | `ReadMCQ`                       | 201    | Auth IS required (despite spec note) -- `_current_user` param is injected |
-| GET    | `/v1/mcqs/`              | Bearer | --          | `List[ReadMCQ]`                 | 200    |                                                                           |
-| GET    | `/v1/mcqs/download/{id}` | Bearer | --          | `Response` (JSON file download) | 200    | Returns 404 `Response` (not `HTTPException`) if not found                 |
+| Method | Path                         | Auth   | Request                                 | Response                                          | Status | Notes                                                                                              |
+| ------ | ---------------------------- | ------ | --------------------------------------- | ------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| POST   | `/v1/mcqs/`                  | Bearer | `CreateMCQ`                             | `ReadMCQ`                                         | 201    | Auth required                                                                                      |
+| GET    | `/v1/mcqs/`                  | Bearer | --                                      | `List[ReadMCQ]`                                   | 200    | Returns persisted MCQ tests                                                                        |
+| GET    | `/v1/mcqs/download/{id}`     | Bearer | --                                      | `Response` (JSON file download)                   | 200    | Legacy JSON download endpoint; 404 returns plain text                                              |
+| GET    | `/v1/mcqs/{mcq_id}/export`   | Bearer | query: `format` + `mode`                | `Response` (md/json/pdf/docx attachment)          | 200    | Multi-format export; `mode=test` strips `right_answer` and `explanation`                          |
+
+Legacy aliases are mounted under `/v1/mcq/*` for create/list/download/export compatibility.
 
 ### 4.5.7 `agent.py` -- 2 Endpoints
 
@@ -565,15 +570,15 @@ queue.enqueue(
 
 This enqueue path intentionally uses positional `args=(...)` to match the worker function signature.
 
-### 4.6.6 `mcq.py` (61 lines)
+### 4.6.6 `mcq.py`
 
-| Function       | Signature                              | Notes                                                                |
-| -------------- | -------------------------------------- | -------------------------------------------------------------------- | ------------------------------------- |
-| `create_mcq`   | `(db, mcq: CreateMCQ) -> ReadMCQ`      | Stores full MCQ JSON in JSONB column. Converts `generated_at` to IST |
-| `get_mcq`      | `(db, mcq_id) -> ReadMCQ               | None`                                                                | Returns `None` (not 404) if not found |
-| `get_all_mcqs` | `(db, limit?, skip?) -> List[ReadMCQ]` | No auth filtering -- returns all MCQs in the database                |
+| Function       | Signature                                        | Notes                                                                                         |
+| -------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `create_mcq`   | `(db, mcq: CreateMCQ) -> ReadMCQ`                | Persists normalized fields (`test_id`, `doc_ids`, `plan`, `questions`, `created_at`, `test_name`) |
+| `get_mcq`      | `(db, mcq_id: UUID) -> Optional[list[ReadMCQ]]`  | Returns `None` if missing; otherwise list of normalized `ReadMCQ`                             |
+| `get_all_mcqs` | `(db, limit?, skip?) -> list[ReadMCQ]`           | Ordered by `created_at DESC NULLS LAST`, then `generated_at DESC NULLS LAST`                 |
 
-**Hardcoded IST timezone:** Same pattern as `projects.py`.
+The CRUD layer now supports backward compatibility by coercing legacy MCQ payloads into the current schema (`question_index`, option `key`, `right_answer`).
 
 **Design rationale note:** The unfiltered `get_all_mcqs` behavior currently acts as a shared MCQ pool for all authenticated users. Treat this as the current contract unless product requirements explicitly move MCQs to per-user ownership.
 

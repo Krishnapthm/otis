@@ -51,6 +51,7 @@ from src.services.retrieval_service import (
     retrieve_with_concepts,
     format_retrieved_context,
 )
+from src.services.mcq_service import persist_generated_mcq_test_from_state
 
 
 router = APIRouter(prefix="/chats")
@@ -464,6 +465,7 @@ async def invoke_chat_endpoint(
         try:
             full_text = ""
             reasoning_text = ""
+            latest_graph_state: dict = {}
 
             # Only stream tokens from terminal generation nodes
             _GENERATION_NODES = {"chat_model", "naive_mcq_generator_node"}
@@ -476,7 +478,7 @@ async def invoke_chat_endpoint(
             async for mode, chunk in graph.astream(
                 input_state,
                 config=config,
-                stream_mode=["custom", "messages"],
+                stream_mode=["custom", "messages", "values"],
             ):
                 if mode == "custom":
                     # Forward writer() payloads as thinking events
@@ -571,6 +573,10 @@ async def invoke_chat_endpoint(
                         # SSE: always emit per-token for live responsiveness
                         yield f"data: {json.dumps({'event': 'token', 'content': content})}\n\n"
 
+                elif mode == "values":
+                    if isinstance(chunk, dict):
+                        latest_graph_state = chunk
+
                 # Periodically check time-based flush for token buffer
                 stale = token_buffer.flush_if_stale()
                 if stale:
@@ -592,6 +598,25 @@ async def invoke_chat_endpoint(
             )
             await _flush_pending()
 
+            structured_data = None
+            try:
+                persisted_mcq_test = await persist_generated_mcq_test_from_state(
+                    db,
+                    latest_graph_state,
+                )
+                if persisted_mcq_test:
+                    structured_data = {
+                        "type": "mcq_test",
+                        "mcq_id": str(persisted_mcq_test.mcq_id),
+                        "mcq_test": persisted_mcq_test.mcq.model_dump(mode="json"),
+                    }
+            except Exception:
+                _log.warning(
+                    "Failed to persist generated MCQ test for message %s",
+                    _msg_id,
+                    exc_info=True,
+                )
+
             final_message = await update_chat_message(
                 db,
                 chat_id,
@@ -599,6 +624,7 @@ async def invoke_chat_endpoint(
                 ChatMessageUpdate(
                     content=full_text,
                     status="completed",
+                    structured_data=structured_data,
                 ),
                 current_user,
             )
