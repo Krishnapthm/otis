@@ -59,7 +59,7 @@ LLM inference uses OpenAI for access to high-quality models. Embeddings run loca
 
 ```bash
 # Clone and enter the repo
-git clone <repo-url> otis && cd otis
+git clone https://github.com/Krishnapthm/otis.git && cd otis
 
 # Create env files from the provided templates
 cp .env.example .env
