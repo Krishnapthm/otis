@@ -59,7 +59,7 @@ LLM inference uses Azure OpenAI for access to high-quality models with managed r
 
 ```bash
 # Clone and enter the repo
-git clone https://github.com/Krishnapthm/otis.git otis && cd otis
+git clone https://github.com/Krishnapthm/otis.git && cd otis
 
 # Create env files from the provided templates
 cp .env.example .env
