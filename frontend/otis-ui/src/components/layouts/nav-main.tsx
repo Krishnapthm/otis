@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  IconCirclePlusFilled,
-  IconTrash,
-  type Icon,
-} from "@tabler/icons-react";
+import { IconCirclePlus, IconTrash, type Icon } from "@tabler/icons-react";
 
 import { useLocation, Link } from "react-router-dom";
 import {
@@ -19,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useCallback } from "react";
 import { chatApi, type ChatResponse } from "@/api/chatApi";
+import { Kbd } from "../ui/kbd";
 
 type NavItem = {
   title: string;
@@ -28,15 +25,91 @@ type NavItem = {
 
 type NavMainProps = {
   items: NavItem[];
+  isChatsOverlayOpen?: boolean;
+  onOpenChatsOverlay?: () => void;
 };
 
-export function NavMain({ items }: NavMainProps) {
+export function NavMain({
+  items,
+  isChatsOverlayOpen = false,
+  onOpenChatsOverlay,
+}: NavMainProps) {
   const location = useLocation();
-  const [chats, setChats] = useState<ChatResponse[]>([]);
 
   // Check if we're on a chat page (/ or /c/:id)
   const isChatPage =
     location.pathname === "/" || location.pathname.startsWith("/c/");
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupContent className="flex flex-col gap-2">
+        <SidebarMenu>
+          <SidebarMenuItem className="flex items-center gap-2">
+            <SidebarMenuButton
+              asChild
+              variant="outline"
+              tooltip="New Chat"
+              className="squircle rounded-lg min-w-8"
+            >
+              <Link to="/" className="flex w-full items-center justify-between">
+                <div className="flex flex-row gap-2 items-center">
+                  <IconCirclePlus size={16} />
+                  <span>New Chat</span>
+                </div>
+                <Kbd>Ctrl + O</Kbd>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
+        <SidebarMenu>
+          {items.map((item) => {
+            const isChatsItem = item.url === "/chats";
+            const isActive = isChatsItem
+              ? isChatsOverlayOpen ||
+                location.pathname === item.url ||
+                location.pathname.startsWith(item.url + "/")
+              : item.url === "/"
+                ? isChatPage
+                : location.pathname === item.url ||
+                  location.pathname.startsWith(item.url + "/");
+
+            return (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton
+                  asChild={!isChatsItem}
+                  tooltip={item.title}
+                  isActive={isActive}
+                  onClick={isChatsItem ? onOpenChatsOverlay : undefined}
+                >
+                  {isChatsItem ? (
+                    <>
+                      {item.icon && <item.icon />}
+                      <span>{item.title}</span>
+                    </>
+                  ) : (
+                    <Link to={item.url}>
+                      {item.icon && <item.icon />}
+                      <span>{item.title}</span>
+                    </Link>
+                  )}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
+export function RecentChatsSection({
+  onOpenChatsOverlay,
+}: {
+  onOpenChatsOverlay?: () => void;
+}) {
+  const location = useLocation();
+  const [chats, setChats] = useState<ChatResponse[]>([]);
 
   const loadChats = useCallback(async () => {
     try {
@@ -47,7 +120,6 @@ export function NavMain({ items }: NavMainProps) {
     }
   }, []);
 
-  // Refetch whenever the route changes (catches new chats being created)
   useEffect(() => {
     loadChats();
   }, [loadChats, location.pathname]);
@@ -63,56 +135,18 @@ export function NavMain({ items }: NavMainProps) {
     }
   };
 
+  const visibleChats = chats.slice(0, 10);
+  const hasMoreChats = chats.length > 10;
+
   return (
     <SidebarGroup>
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2">
-            <SidebarMenuButton
-              asChild
-              variant="outline"
-              tooltip="New Chat"
-              className="squircle rounded-lg min-w-8"
-            >
-              <Link to="/">
-                <IconCirclePlusFilled />
-                <span>New Chat</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-
-        <SidebarMenu>
-          {items.map((item) => {
-            const isActive =
-              item.url === "/"
-                ? isChatPage
-                : location.pathname === item.url ||
-                  location.pathname.startsWith(item.url + "/");
-
-            return (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton
-                  asChild
-                  tooltip={item.title}
-                  isActive={isActive}
-                >
-                  <Link to={item.url}>
-                    {item.icon && <item.icon />}
-                    <span>{item.title}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
-
-        {/* Recent Conversations */}
-        <SidebarMenu>
           <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
-          {chats.slice(0, 20).map((chat) => {
+          {visibleChats.map((chat) => {
             const isActive = location.pathname === `/c/${chat.chat_id}`;
             const label = chat.title ?? "Untitled chat";
+
             return (
               <SidebarMenuItem key={chat.chat_id}>
                 <SidebarMenuButton asChild tooltip={label} isActive={isActive}>
@@ -138,6 +172,17 @@ export function NavMain({ items }: NavMainProps) {
               </SidebarMenuItem>
             );
           })}
+          {hasMoreChats ? (
+            <SidebarMenuItem>
+              <button
+                type="button"
+                onClick={onOpenChatsOverlay}
+                className="text-muted-foreground hover:text-foreground block w-full px-2 py-1 text-center text-sm"
+              >
+                See more
+              </button>
+            </SidebarMenuItem>
+          ) : null}
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>

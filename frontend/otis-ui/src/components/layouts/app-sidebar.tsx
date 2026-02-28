@@ -1,26 +1,14 @@
 import * as React from "react";
 import {
-  IconCamera,
-  IconChartBar,
-  IconDashboard,
   IconDatabase,
-  IconFileAi,
   IconFileDescription,
-  IconFileWord,
-  IconHelp,
-  IconInnerShadowTop,
   IconListDetails,
   IconMessage,
-  IconReport,
-  IconSearch,
   IconSettings,
-  IconUsers,
   IconCloudDataConnection,
 } from "@tabler/icons-react";
 
-import { NavDocuments } from "@/components/layouts/nav-documents";
-import { NavMain } from "@/components/layouts/nav-main";
-import { NavSecondary } from "@/components/layouts/nav-secondary";
+import { NavMain, RecentChatsSection } from "@/components/layouts/nav-main";
 import { NavUser } from "@/components/layouts/nav-user";
 import {
   Sidebar,
@@ -30,6 +18,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link } from "react-router-dom";
@@ -43,14 +32,14 @@ const data = {
   },
   navMain: [
     {
-      title: "Chat",
-      url: "/",
+      title: "Chats",
+      url: "/chats",
       icon: IconMessage,
     },
     {
-      title: "Dashboard",
-      url: "/dashboard",
-      icon: IconDashboard,
+      title: "Data Library",
+      url: "/data-library",
+      icon: IconDatabase,
     },
     {
       title: "Projects",
@@ -58,76 +47,27 @@ const data = {
       icon: IconListDetails,
     },
     {
-      title: "Analytics",
-      url: "/analytics",
-      icon: IconChartBar,
-    },
-    {
-      title: "Team",
-      url: "/team",
-      icon: IconUsers,
-    },
-  ],
-  navClouds: [
-    {
-      title: "Capture",
-      icon: IconCamera,
-      url: "/capture",
-    },
-    {
-      title: "Proposal",
+      title: "MCQs",
+      url: "/mcqs",
       icon: IconFileDescription,
-      url: "/proposal",
     },
-    {
-      title: "Prompts",
-      icon: IconFileAi,
-      url: "/prompts",
-    },
-  ],
-  navSecondary: [
     {
       title: "Vector Store",
       url: "/vector-store",
       icon: IconCloudDataConnection,
     },
-    {
-      title: "Settings",
-      url: "/settings",
-      icon: IconSettings,
-    },
-    {
-      title: "Get Help",
-      url: "/help",
-      icon: IconHelp,
-    },
-    {
-      title: "Search",
-      url: "/search",
-      icon: IconSearch,
-    },
-  ],
-  documents: [
-    {
-      name: "Data Library",
-      url: "/data-library",
-      icon: IconDatabase,
-    },
-    {
-      name: "Reports",
-      url: "/reports",
-      icon: IconReport,
-    },
-    {
-      name: "Word Assistant",
-      url: "/word-assistant",
-      icon: IconFileWord,
-    },
   ],
 };
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {};
 
-export function AppSidebar({ ...props }: AppSidebarProps) {
+export function AppSidebar({
+  isChatsOverlayOpen = false,
+  onOpenChatsOverlay,
+  ...props
+}: AppSidebarProps & {
+  isChatsOverlayOpen?: boolean;
+  onOpenChatsOverlay?: () => void;
+}) {
   const { user } = useAuth();
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -155,16 +95,34 @@ export function AppSidebar({ ...props }: AppSidebarProps) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <ScrollArea className="h-full">
-          <div className="flex flex-col gap-2 pr-3">
-            <NavMain items={data.navMain} />
-            <NavSecondary items={data.navClouds} />
-            <NavDocuments items={data.documents} />
-            <NavSecondary items={data.navSecondary} className="mt-auto" />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="pr-3">
+            <NavMain
+              items={data.navMain}
+              isChatsOverlayOpen={isChatsOverlayOpen}
+              onOpenChatsOverlay={onOpenChatsOverlay}
+            />
           </div>
-        </ScrollArea>
+
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="pr-3">
+              <RecentChatsSection onOpenChatsOverlay={onOpenChatsOverlay} />
+            </div>
+          </ScrollArea>
+        </div>
       </SidebarContent>
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <Link to="/settings">
+                <IconSettings />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarSeparator />
         <NavUser user={user!} />
       </SidebarFooter>
     </Sidebar>
