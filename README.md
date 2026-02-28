@@ -1,8 +1,6 @@
 # Otis
 
-An AI-powered educational platform that turns static documents into interactive assessments and conversational tutoring experiences.
-
-Upload a PDF → the system extracts text, generates vector embeddings, and identifies key concepts. A multi-node LangGraph agent then generates validated multiple-choice questions on demand, and serves as a document-grounded conversational tutor.
+An agentic RAG-based MCQ generation system that transforms uploaded PDFs into validated tests. The pipeline extracts document text, builds vector embeddings, and generates a structured concept map to guide agent during semantic retrieval. A LangGraph workflow then generates search queries conditioned on both the concept graph and user prompt, enabling context grounded question generation and validation. The architecture combines retrieval-augmented generation, graph-orchestrated reasoning, and structured outputs to ensure question quality, relevance, and traceability.
 
 ---
 
