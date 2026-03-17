@@ -17,7 +17,7 @@ ALLOWED_EXTENSIONS = {
     "md": "text/markdown",
 }
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILE_SIZE = 60 * 1024 * 1024  # 60MB
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 

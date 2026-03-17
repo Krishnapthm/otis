@@ -47,7 +47,7 @@ from src.api.constants import (
 from src.api.utils import EventSequencer, TokenChunkBuffer
 from src.core.security import get_current_user
 from src.core.config import settings
-from src.services.retrieval_service import (
+from src.rag.retrieval import (
     retrieve_with_concepts,
     format_retrieved_context,
 )

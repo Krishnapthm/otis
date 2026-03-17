@@ -123,7 +123,7 @@ async def sync_user_embeddings(
     await db.commit()
 
     # Queue the embedding task
-    from src.tasks.embedding_tasks import process_user_embeddings
+    from src.rag.tasks import process_user_embeddings
 
     job = queue.enqueue(
         process_user_embeddings,

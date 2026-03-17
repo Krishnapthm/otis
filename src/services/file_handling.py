@@ -20,7 +20,7 @@ ALLOWED_EXTENSIONS = {
     "md": "text/markdown",
 }
 
-MAX_FILE_SIZE = 10 * 1024 * 1024
+MAX_FILE_SIZE = 60 * 1024 * 1024
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/app/uploads")
 THUMBNAIL_DIR = os.environ.get("THUMBNAIL_DIR", "/app/thumbnails")

@@ -2,7 +2,7 @@ from langgraph.config import get_stream_writer
 
 from src.agents.utils.helpers import resolve_user_prompt
 from src.agents.utils.state import RetrievalStatus, State
-from src.agents.utils.services.retrieval import retrieve_chunks
+from src.rag.agent_retrieval import retrieve_chunks
 
 
 async def retrieval_node(state: State) -> dict:
